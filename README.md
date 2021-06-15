@@ -23,7 +23,7 @@ Within the System Log Settings (Status > System Logs > Settings) set the logging
   - Web Server Log
   - Log errors from the web server process
 Finally, configure remote logging with appropriate source addresses and syslog server addressing for your setup, and then set the "Remote Syslog Contents" to "Everything"  
-## PfSense 2.4.x
+### PfSense 2.4.x
 Due to a Syslog bug in this version of PfSense the hostname of the PfSense instance is not recorded in it's syslog entries, this means it is not possible to link a log entry with a specific 2.4.x PfSense instance, greatly limiting the monitoring capabilites for them within the system.
 However if you do wish to add these to the system, within the System Log Settings (Status > System Logs > Settings) set the system to:  
   - Log packets matched from the default block rules 
