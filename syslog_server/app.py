@@ -12,7 +12,6 @@ db_password = os.environ["DB_PASS"]
 db_schema = os.environ["DB_SCHEMA"]
 db_port = os.environ["DB_PORT"]
 
-LOG_FILE = 'youlogfile.log'
 HOST, PORT = "0.0.0.0", 514
 
 #Functions to interact with db
@@ -46,10 +45,8 @@ def element_find(start_char_set, end_char_set, data):
     start = data.find(start_char_set) + len(start_char_set)
     end = data.find(end_char_set)
     substring = data[start:end]
-    logging.warning(substring)
     substring = substring.strip()
     end_len = end + len(end_char_set)
-    logging.warning(str(end_len))
     sliced_string = data[end_len:]
     return(substring, sliced_string)
 
@@ -75,18 +72,13 @@ def log_process_25x(data):
 
 def log_process_24x(data):
     result = data.split("<", 1)
-    result_1 = result[1].split("> ", 1)
-    type_code = result_1[0]
-    logging.warning("TYPE CODE:")
-    logging.warning(type_code)
-    logging.warning("POST TYPE CODE SPLIT:")
-    logging.warning(result_1[1])
-    result_2 = element_split(15, result_1[1])
+    rest = result[1]
+    type_code, rest = rest.split(">", 1)
+    result_2 = element_split(15, rest)
     timestamp = result_2[0]
-    logging.warning("TIMESTAMP:")
-    logging.warning(timestamp)
-    result_3 = result_2[1].split(" ", 2)
-    result_4 = result_3[3].split(":")
+    rest = result_2[1]
+    rest = rest.strip()
+    result_4 = rest.split(":", 1)
     log_type = result_4[0]
     rset = result_4[1].strip()
     rset = rset.split(",")
@@ -127,21 +119,22 @@ class SyslogUDPHandler(socketserver.BaseRequestHandler):
                 query = "INSERT INTO pfsense_logs (type_code, record_time, hostname, log_type, rule_number, sub_rule_number, anchor, tracker, real_interface, reason, act, direction, ip_version, tos_header, ecn_header, ttl, packet_id, packet_offset, flags, protocol_id, protocol, packet_length, source_ip, destination_ip, source_port, destination_port, data_length) VALUES ({}, '{}', '{}', '{}', {}, {}, {}, {}, '{}', '{}', '{}', '{}', {}, '{}', '{}', {}, {}, {}, '{}', {}, '{}', {}, '{}', '{}', {}, {}, {})"
                 query = query.format(results[0], results[1], results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
                 update_db(query)
+                logging.warning("PfSense 2.5.x Completed")
             except:
                 logging.warning("PfSense 2.4.x Attempted")
                 results = log_process_24x(log)
-                logging.warning("RESULTS:")
-                logging.warning(results)
                 results = iterate_nulls(results, 1, 4)
-                sub_results = iterate_nulls(results[4], 2, 99)
-                query = "INSERT INTO pfsense_logs (type_code, record_time, log_type, rule_number, sub_rule_number, anchor, tracker, real_interface, reason, act, direction, ip_version, tos_header, ecn_header, ttl, packet_id, packet_offset, flags, protocol_id, protocol, packet_length, source_ip, destination_ip, source_port, destination_port, data_length) VALUES ({}, '{}', '{}', '{}', {}, {}, {}, {}, '{}', '{}', '{}', '{}', {}, '{}', '{}', {}, {}, {}, '{}', {}, '{}', {}, '{}', '{}', {}, {}, {})"
+                sub_results = iterate_nulls(results[3], 2, 99)
+                query = "INSERT INTO pfsense_logs (type_code, record_time, log_type, rule_number, sub_rule_number, anchor, tracker, real_interface, reason, act, direction, ip_version, tos_header, ecn_header, ttl, packet_id, packet_offset, flags, protocol_id, protocol, packet_length, source_ip, destination_ip, source_port, destination_port, data_length) VALUES ({}, '{}', '{}', {}, {}, {}, {}, '{}', '{}', '{}', '{}', {}, '{}', '{}', {}, {}, {}, '{}', {}, '{}', {}, '{}', '{}', {}, {}, {})"
                 query = query.format(results[0], results[1], results[2], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
-                logging.warning("QUERY:")
-                logging.warning(query)
-                logging.warning("")
                 update_db(query)
+                logging.warning("PfSense 2.4.x Completed")
         except:
-            logging.warning("Parsing failed")
+            query = "INSERT INTO bucket (log) VALUES ('{}')"
+            query = query.format(log)
+            update_db(query)
+            logging.warning("Parsing failed - Adding to log bucket")
+
 
 if __name__ == "__main__":
 	try:
