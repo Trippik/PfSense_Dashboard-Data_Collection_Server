@@ -3,6 +3,7 @@ import socketserver
 import mysql.connector
 import os
 import re
+import datetime
 
 logging.warning("Program Started")
 
@@ -125,8 +126,10 @@ class SyslogUDPHandler(socketserver.BaseRequestHandler):
                 results = log_process_24x(log)
                 results = iterate_nulls(results, 1, 4)
                 sub_results = iterate_nulls(results[3], 2, 99)
+                date_time_str = str(datetime.datetime.now().year) + " " +  results[1]
+                timestamp = datetime.datetime.strptime(date_time_str, '%Y %b %d %H:%M:%S')
                 query = "INSERT INTO pfsense_logs (type_code, record_time, log_type, rule_number, sub_rule_number, anchor, tracker, real_interface, reason, act, direction, ip_version, tos_header, ecn_header, ttl, packet_id, packet_offset, flags, protocol_id, protocol, packet_length, source_ip, destination_ip, source_port, destination_port, data_length) VALUES ({}, '{}', '{}', {}, {}, {}, {}, '{}', '{}', '{}', '{}', {}, '{}', '{}', {}, {}, {}, '{}', {}, '{}', {}, '{}', '{}', {}, {}, {})"
-                query = query.format(results[0], results[1], results[2], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
+                query = query.format(results[0], timestamp, results[2], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
                 update_db(query)
                 logging.warning("PfSense 2.4.x Completed")
         except:
