@@ -159,11 +159,13 @@ class SyslogUDPHandler(socketserver.BaseRequestHandler):
             query = query.format(log)
             update_db(query)
             logging.warning("Parsing failed - Adding to log bucket")
+        if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0):
+            logging.warning("SSH POLL TAKING PLACE")
 
 #MAINLOOP
 if __name__ == "__main__":
 	try:
 		server = socketserver.UDPServer((HOST,PORT), SyslogUDPHandler)
-		server.serve_forever(poll_interval=float(os.environ["POLL_INTERVAL"]))
+		server.serve_forever(poll_interval=float(os.environ["SYSLOG_POLL_INTERVAL"]))
 	except (IOError, SystemExit):
 		raise
