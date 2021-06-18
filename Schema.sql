@@ -26,7 +26,26 @@ CREATE TABLE `bucket` (
   `id` int NOT NULL AUTO_INCREMENT,
   `log` text,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=94315 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=527443 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `pfsense_firewall_rules`
+--
+
+DROP TABLE IF EXISTS `pfsense_firewall_rules`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `pfsense_firewall_rules` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `pfsense_instance` int NOT NULL,
+  `record_time` timestamp NOT NULL,
+  `rule_number` int NOT NULL,
+  `rule_description` text,
+  PRIMARY KEY (`id`),
+  KEY `pfsense_instance` (`pfsense_instance`),
+  CONSTRAINT `pfsense_firewall_rules_ibfk_1` FOREIGN KEY (`pfsense_instance`) REFERENCES `pfsense_instances` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -38,10 +57,16 @@ DROP TABLE IF EXISTS `pfsense_instances`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `pfsense_instances` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `pfsense_name` varchar(255) NOT NULL,
+  `pfsense_name` varchar(255) DEFAULT NULL,
+  `hostname` varchar(255) DEFAULT NULL,
+  `reachable_ip` varchar(255) DEFAULT NULL,
+  `instance_user` varchar(255) DEFAULT NULL,
+  `instance_password` varchar(255) DEFAULT NULL,
+  `ssh_port` int DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `pfsense_name` (`pfsense_name`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+  UNIQUE KEY `pfsense_name` (`pfsense_name`),
+  UNIQUE KEY `hostname` (`hostname`)
+) ENGINE=InnoDB AUTO_INCREMENT=1067 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -81,7 +106,7 @@ CREATE TABLE `pfsense_logs` (
   `destination_port` int DEFAULT NULL,
   `data_length` int DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2736442 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4195300 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -93,4 +118,4 @@ CREATE TABLE `pfsense_logs` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2021-06-11 18:15:21
+-- Dump completed on 2021-06-18 17:50:58
