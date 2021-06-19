@@ -19,7 +19,8 @@ Container needs to be accessible to all remote PfSense instances, and needs an o
 In it's current state the syslog server is fully compatible with 2.5.x versions of PfSense, with only limited support for 2.4.x version of PfSense due to a hostname log bug in this software version (https://redmine.pfsense.org/issues/7020).
 In order to add a new PfSense instance, firstly begin remote syslog sending to the system using the relevant instructions below. 
 Once syslog records from the remote instance begin being transmitted to the system, a new record for this instance will be automatically added to the underlying database.
-IP Connection details and SSH credentials can then be added to this instance record to allow the system to pull data from the remote instance in order to maintain records for all datapoints.
+IP Connection details and SSH credentials can then be added to this instance record to allow the system to pull data from the remote instance in order to maintain records for all datapoints.  
+  
 *NB - 2.4.x PfSense versions are only capable of limited syslog transmission within the system, and there is little to no utility in using the more advanced SSH data pulling with them*
   
 ### PfSense 2.5.x - Syslog Setup
