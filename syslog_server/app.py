@@ -23,6 +23,7 @@ db_port = os.environ["DB_PORT"]
 #LISTEN ON PORT 514
 HOST, PORT = "0.0.0.0", 514
 
+
 #----------------------------------------------------
 #UNDERLYING FUNCTIONS
 #----------------------------------------------------
@@ -89,6 +90,69 @@ def iterate_nulls(tup, mode, count):
             else:
                 new_tup = new_tup + [item]
     return(new_tup)
+
+def index_table_add(values, table, elements, mode):
+    single_field_insert_query = "INSERT INTO {} ({}) VALUES ('{}')"
+    double_field_insert_query = "INSERT INTO {} ({}, {}) VALUES ('{}', {})"
+    read_query = "SELECT id FROM {} WHERE {}"
+    single_element_where = "{} = '{}'"
+    double_element_where = "{} = '{}' AND {} = {}"
+    if(mode == 2):
+        query = single_field_insert_query.format(table, elements[0], values)
+        update_db(query)
+        read_query = read_query.format(table, single_element_where.format(elements[0], values))
+        result = query_db(read_query)
+        id = result[0][0]
+    return(id)
+
+def index_table_process(values, table, elements, mode):
+    read_query = "SELECT id FROM {} WHERE {} LIMIT 1"
+    count_query = "SELECT COUNT(*) FROM {} WHERE {}"
+    single_element_where = "{} = '{}'"
+    double_element_where = "{} = '{}' AND {} = {}"
+    if(mode == 1):
+        read_query = read_query.format(table, single_element_where.format(elements[0], values))
+        results = query_db(read_query)
+        for row in results:
+            id = row[0]
+    elif(mode == 2):
+        count_query = count_query.format(table, single_element_where.format(elements[0], values))
+        count = int(query_db(count_query)[0][0])
+        if(count > 0):
+            read_query = read_query.format(table, single_element_where.format(elements[0], values))
+            results = query_db(read_query)
+            id = results[0][0]
+        else:
+            id = index_table_add(values, table, elements, mode)
+    return(id)
+
+
+def results_process(results_tup, checks_tup):
+    count = 0
+    check_count= 0
+    final_tup = []
+    for result in results_tup:
+        try:
+            current_check = checks_tup[check_count][0]
+            if(count == current_check):
+                check = checks_tup[check_count]
+                if(count == 3 and check[3] == 3):
+                    values = [result, instance]
+                elif(count == 2 and check[3] == 1):
+                    instance = result
+                    values = result
+                else:
+                    values = result
+                new_result = index_table_process(values, check[1], check[2], check[3])
+                final_tup = final_tup + [str(new_result)]        
+                check_count = check_count + 1
+            else:
+                final_tup = final_tup + [str(result)]
+        except:
+            final_tup = final_tup + [str(result)]
+        count = count + 1
+
+
 
 
 #----------------------------------------------------
@@ -164,41 +228,36 @@ class SyslogUDPHandler(socketserver.BaseRequestHandler):
         data = bytes.decode(self.request[0].strip())
         log = str(data)
         #Attempt to run data through available parsing functions
-        try:
-            #Attempt to parse as PfSense 2.5.x log
-            try:
-                results = log_process_25x(log)
-                results = iterate_nulls(results, 1, 4)
-                hostname = results[2]
-                sub_results = iterate_nulls(results[4], 2, 99)
-                query = "INSERT INTO pfsense_logs (type_code, record_time, hostname, log_type, rule_number, sub_rule_number, anchor, tracker, real_interface, reason, act, direction, ip_version, tos_header, ecn_header, ttl, packet_id, packet_offset, flags, protocol_id, protocol, packet_length, source_ip, destination_ip, source_port, destination_port, data_length) VALUES ({}, '{}', '{}', '{}', {}, {}, {}, {}, '{}', '{}', '{}', '{}', {}, '{}', '{}', {}, {}, {}, '{}', {}, '{}', {}, '{}', '{}', {}, {}, {})"
-                query = query.format(results[0], results[1], results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
-                update_db(query)
-                query_1 = "SELECT COUNT(*) FROM pfsense_instances WHERE hostname = '{}'"
-                query_1.format(hostname)
-                results = query_db(query_1)
-                if(results[0][0] == "0"):
-                    query_2 = "INSERT INTO pfsense_instances (hostname) VALUES ('{}')"
-                    query_2 = query_2.format(hostname)
-                    update_db(query_2)
-                logging.warning("PfSense 2.5.x Log Parse Completed")
-            #If unable to parse as 2.5.x log parse as 2.4.x log
-            except:
-                results = log_process_24x(log)
-                results = iterate_nulls(results, 1, 4)
-                sub_results = iterate_nulls(results[3], 2, 99)
-                date_time_str = str(datetime.datetime.now().year) + " " +  results[1]
-                timestamp = datetime.datetime.strptime(date_time_str, '%Y %b %d %H:%M:%S')
-                query = "INSERT INTO pfsense_logs (type_code, record_time, log_type, rule_number, sub_rule_number, anchor, tracker, real_interface, reason, act, direction, ip_version, tos_header, ecn_header, ttl, packet_id, packet_offset, flags, protocol_id, protocol, packet_length, source_ip, destination_ip, source_port, destination_port, data_length) VALUES ({}, '{}', '{}', {}, {}, {}, {}, '{}', '{}', '{}', '{}', {}, '{}', '{}', {}, {}, {}, '{}', {}, '{}', {}, '{}', '{}', {}, {}, {})"
-                query = query.format(results[0], timestamp, results[2], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
-                update_db(query)
-                logging.warning("PfSense 2.4.x Log Parse Completed")
+        #try:
+        #Attempt to parse as PfSense 2.5.x log
+        results = log_process_25x(log)
+        results = iterate_nulls(results, 1, 4)
+        hostname = results[2]
+        sub_results = iterate_nulls(results[4], 2, 99)
+        query_1 = "SELECT COUNT(*) FROM pfsense_instances WHERE hostname = '{}'"
+        query_1.format(hostname)
+        query_results = query_db(query_1)
+        if(query_results[0][0] == "0"):
+            query_2 = "INSERT INTO pfsense_instances (hostname) VALUES ('{}')"
+            query_2 = query_2.format(hostname)
+            update_db(query_2)
+        results_checks = [[2, "pfsense_instances", ["hostname"], 1], [3, "pfsense_log_type", ["log_type"], 2]]
+        sub_results_checks = [[4, "pfsense_real_interface", ["interface"], 2], [5, "pfsense_reason", ["reason"], 2], [6, "pfsense_act", ["act"], 2], [7, "pfsense_direction", ["direction"], 2], [9, "pfsense_tos_header", ["tos_header"], 2], [10, "pfsense_ecn_header", ["ecn_header"], 2], [13, "pfsense_flags", ["flags"], 2], [15, "pfsense_protocol", ["protocol"], 2], [17, "pfsense_ip", ["ip"], 2], [18, "pfsense_ip", ["ip"], 2]]
+        results = [results[0], results[1], results[2], results[3]]
+        results = results_process(results, results_checks)
+        sub_results = results_process(sub_results, sub_results_checks)  
+        logging.warning(results)
+        logging.warning(sub_results)          
+        query = "INSERT INTO pfsense_logs (type_code, record_time, pfsense_instance, log_type, rule_number, sub_rule_number, anchor, tracker, real_interface, reason, act, direction, ip_version, tos_header, ecn_header, ttl, packet_id, packet_offset, flags, protocol_id, protocol, packet_length, source_ip, destination_ip, source_port, destination_port, data_length) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})"
+        query = query.format(results[0], results[1], results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
+        update_db(query)
+        logging.warning("PfSense 2.5.x Log Parse Completed")
         #If unable to parse save raw log entry to "bucket" within DB
-        except:
-            query = "INSERT INTO bucket (log) VALUES ('{}')"
-            query = query.format(log)
-            update_db(query)
-            logging.warning("Parsing failed - Adding to log bucket")
+        #except:
+        #    query = "INSERT INTO pfsense_log_bucket (log) VALUES ('{}')"
+        #    query = query.format(log)
+        #    update_db(query)
+        #    logging.warning("Parsing failed - Adding to log bucket")
         if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
             standard_ssh_checks()
             logging.warning("SSH POLL TAKING PLACE")
