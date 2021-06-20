@@ -127,7 +127,7 @@ def index_table_process(values, table, elements, mode):
     return(id)
 
 
-def results_process(results_tup, checks_tup):
+def results_process(results_tup, checks_tup, instance):
     count = 0
     checks_count = 0
     checks_max = len(checks_tup)
@@ -228,8 +228,11 @@ class SyslogUDPHandler(socketserver.BaseRequestHandler):
             query_2 = "INSERT INTO pfsense_instances (hostname) VALUES ('{}')"
             query_2 = query_2.format(hostname)
             update_db(query_2)
-        results_checks = [[2, "pfsense_instances", ["hostname"], 1], [3, "pfsense_log_type", ["log_type"], 2]]
-        results_process(results, results_checks)
+        query_3 = "SELECT id FROM pfsense_instances WHERE hostname = '{}'"
+        pfsense_instance = query_db(query_3.format(hostname))[0][0]
+        logging.warning("pfsense instance: " + str(pfsense_instance))
+        results_checks = [[3, "pfsense_log_type", ["log_type"], 2]]
+        results_process(results, results_checks, pfsense_instance)
         if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
             standard_ssh_checks()
             logging.warning("SSH POLL TAKING PLACE")
