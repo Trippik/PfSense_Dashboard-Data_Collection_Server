@@ -129,31 +129,17 @@ def index_table_process(values, table, elements, mode):
 
 def results_process(results_tup, checks_tup):
     count = 0
-    check_count= 0
+    checks_count = 0
+    checks_max = len(checks_tup)
     final_tup = []
     for result in results_tup:
-        try:
-            current_check = checks_tup[check_count][0]
-            if(count == current_check):
-                check = checks_tup[check_count]
-                if(count == 3 and check[3] == 3):
-                    values = [result, instance]
-                elif(count == 2 and check[3] == 1):
-                    instance = result
-                    values = result
-                else:
-                    values = result
-                new_result = index_table_process(values, check[1], check[2], check[3])
-                final_tup = final_tup + [str(new_result)]        
-                check_count = check_count + 1
-            else:
-                final_tup = final_tup + [str(result)]
-        except:
-            final_tup = final_tup + [str(result)]
+        if(checks_count < checks_max):
+            if(count == checks_tup[checks_count][0]):
+                logging.warning(result)
+                logging.warning(str(checks_tup[checks_count]))
+                checks_count = checks_count + 1
+        final_tup = final_tup + [result]
         count = count + 1
-
-
-
 
 #----------------------------------------------------
 #PRIMARY FUNCTIONS
@@ -234,6 +220,7 @@ class SyslogUDPHandler(socketserver.BaseRequestHandler):
         results = iterate_nulls(results, 1, 4)
         hostname = results[2]
         sub_results = iterate_nulls(results[4], 2, 99)
+        results = [results[0], results[1], results[2], results[3]]
         query_1 = "SELECT COUNT(*) FROM pfsense_instances WHERE hostname = '{}'"
         query_1.format(hostname)
         query_results = query_db(query_1)
@@ -242,22 +229,7 @@ class SyslogUDPHandler(socketserver.BaseRequestHandler):
             query_2 = query_2.format(hostname)
             update_db(query_2)
         results_checks = [[2, "pfsense_instances", ["hostname"], 1], [3, "pfsense_log_type", ["log_type"], 2]]
-        sub_results_checks = [[4, "pfsense_real_interface", ["interface"], 2], [5, "pfsense_reason", ["reason"], 2], [6, "pfsense_act", ["act"], 2], [7, "pfsense_direction", ["direction"], 2], [9, "pfsense_tos_header", ["tos_header"], 2], [10, "pfsense_ecn_header", ["ecn_header"], 2], [13, "pfsense_flags", ["flags"], 2], [15, "pfsense_protocol", ["protocol"], 2], [17, "pfsense_ip", ["ip"], 2], [18, "pfsense_ip", ["ip"], 2]]
-        results = [results[0], results[1], results[2], results[3]]
-        results = results_process(results, results_checks)
-        sub_results = results_process(sub_results, sub_results_checks)  
-        logging.warning(results)
-        logging.warning(sub_results)          
-        query = "INSERT INTO pfsense_logs (type_code, record_time, pfsense_instance, log_type, rule_number, sub_rule_number, anchor, tracker, real_interface, reason, act, direction, ip_version, tos_header, ecn_header, ttl, packet_id, packet_offset, flags, protocol_id, protocol, packet_length, source_ip, destination_ip, source_port, destination_port, data_length) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})"
-        query = query.format(results[0], results[1], results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
-        update_db(query)
-        logging.warning("PfSense 2.5.x Log Parse Completed")
-        #If unable to parse save raw log entry to "bucket" within DB
-        #except:
-        #    query = "INSERT INTO pfsense_log_bucket (log) VALUES ('{}')"
-        #    query = query.format(log)
-        #    update_db(query)
-        #    logging.warning("Parsing failed - Adding to log bucket")
+        results_process(results, results_checks)
         if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
             standard_ssh_checks()
             logging.warning("SSH POLL TAKING PLACE")
