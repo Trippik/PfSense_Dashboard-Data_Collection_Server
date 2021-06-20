@@ -126,6 +126,10 @@ def index_table_process(values, table, elements, mode):
             id = index_table_add(values, table, elements, mode)
     return(id)
 
+def single_dimension_index_read(result, table, var_name):
+    query = """SELECT id FROM {} WHERE {} = '{}'"""
+    id = query_db(query.format(table, var_name, result))[0][0]
+    return(id)
 
 def results_process(results_tup, checks_tup, instance):
     count = 0
@@ -135,8 +139,10 @@ def results_process(results_tup, checks_tup, instance):
     for result in results_tup:
         if(checks_count < checks_max):
             if(count == checks_tup[checks_count][0]):
-                logging.warning(result)
-                logging.warning(str(checks_tup[checks_count]))
+                checks = checks_tup[checks_count]
+                if(checks[3] == 2):
+                    id = single_dimension_index_read(result, checks[1], checks[2][0])
+                    logging.warning("ID: " + str(id))
                 checks_count = checks_count + 1
         final_tup = final_tup + [result]
         count = count + 1
@@ -230,9 +236,9 @@ class SyslogUDPHandler(socketserver.BaseRequestHandler):
             update_db(query_2)
         query_3 = "SELECT id FROM pfsense_instances WHERE hostname = '{}'"
         pfsense_instance = query_db(query_3.format(hostname))[0][0]
-        logging.warning("pfsense instance: " + str(pfsense_instance))
         results_checks = [[3, "pfsense_log_type", ["log_type"], 2]]
-        results_process(results, results_checks, pfsense_instance)
+        results = results_process(results, results_checks, pfsense_instance)
+
         if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
             standard_ssh_checks()
             logging.warning("SSH POLL TAKING PLACE")
