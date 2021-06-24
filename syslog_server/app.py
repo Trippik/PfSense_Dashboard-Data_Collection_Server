@@ -22,7 +22,7 @@ db_schema = os.environ["DB_SCHEMA"]
 db_port = os.environ["DB_PORT"]
 
 #SET STORAGE DIRECTORY
-dir = "C:/Users/Cam/Desktop"
+dir = "/var/models/"
 
 #----------------------------------------------------
 #UNDERLYING FUNCTIONS
