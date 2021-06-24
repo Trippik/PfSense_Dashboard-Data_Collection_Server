@@ -225,7 +225,7 @@ def log_process_24x(data):
     log_type = result_4[0]
     rset = result_4[1].strip()
     rset = rset.split(",")
-    final_result = (type_code, timestamp, log_type, rset)
+    final_result = (type_code, timestamp, None, log_type, rset)
     return(final_result)
 
 
