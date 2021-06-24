@@ -5,14 +5,12 @@
 import logging
 import mysql.connector
 import os
-import re
 import datetime
 import paramiko
 import time
 
 #ADD TO LOG
 logging.warning("Program Started")
-
 
 #SET DB PARAMETERS
 db_host = os.environ["DB_IP"]
@@ -190,7 +188,7 @@ def standard_ssh_checks():
         except:
             logging.warning("SSH Error for instance id: " + str(client[0]))
 
-def collect_logs():
+def collect_filter_logs():
     clients = return_clients()
     for client in clients:
         pfsense_instance = client[0]
@@ -204,40 +202,41 @@ def log_process_25x(data):
     type_code = result[0]
     result_2 = result[1].split()
     timestamp = result_2[0]
-    hostname = result_2[1]
+    hostname = None
     log_type = result_2[2]
-    rset = result_2[6]
-    rest = result_2[1].strip()  
+    rset = result_2[6]  
     rset = rset.split(",")
     final_result = (type_code, timestamp, hostname, log_type, rset)
     return(final_result)
 
-#PARSE PFSENSE 2.4.x LOG DATA
+#PARSE PFSENSE 2.4.x and 21.05 PFSENSE PLUS LOG DATA
 def log_process_24x(data):
-    result = data.split("<", 1)
-    rest = result[1]
-    type_code, rest = rest.split(">", 1)
-    result_2 = element_split(15, rest)
-    timestamp = result_2[0]
-    rest = result_2[1]
-    rest = rest.strip()
-    result_4 = rest.split(":", 1)
-    log_type = result_4[0]
-    rset = result_4[1].strip()
+    split_1 = data.split(" ", 3)
+    timestamp = split_1[0] + " " + split_1[1] + " " + split_1[2]
+    rest_1 = split_1[3]
+    raw_element_1 = rest_1.split(" ", 1)[1]
+    log_type = raw_element_1.split("[")[0]
+    rset = raw_element_1.split("]:", 1)[1].strip(" ")
     rset = rset.split(",")
-    final_result = (type_code, timestamp, None, log_type, rset)
+    final_result = ("NULL", timestamp, log_type, rset)
     return(final_result)
-
 
 def handle(log, pfsense_instance):
     #Attempt to run data through available parsing functions
     try:
-        #Attempt to parse as PfSense 2.5.x log
-        results = log_process_25x(log)
-        hostname = results[2]
-        sub_results = results[4]
-        results = [results[0], results[1], results[2], results[3]]
-        results[2] = str(pfsense_instance)
+        try:
+            #Attempt to parse as PfSense 2.5.x log
+            results = log_process_25x(log)
+            hostname = results[2]
+            sub_results = results[4]
+            results = [results[0], results[1], str(pfsense_instance), results[3]]
+            #Attempt to parse as PfSense 2.4.x log
+        except:
+            log = log.strip("\n")
+            results = log_process_24x(log)
+            timestamp = datetime.datetime.now().strftime('%Y %b %d %H:%M:%S')
+            sub_results = results[3]
+            results = [results[0], timestamp, str(pfsense_instance), results[2]]
         results_checks = [
             [3, "pfsense_log_type", ["log_type"], 2]
             ]
@@ -259,7 +258,7 @@ def handle(log, pfsense_instance):
         log_insert_query = """INSERT IGNORE INTO `Dashboard_DB`.`pfsense_logs` (`type_code`, `record_time`, `pfsense_instance`, `log_type`, `rule_number`, `sub_rule_number`, `anchor`, `tracker`, `real_interface`, `reason`, `act`, `direction`, `ip_version`, `tos_header`, `ecn_header`, `ttl`, `packet_id`, `packet_offset`, `flags`, `protocol_id`, `protocol`, `packet_length`, `source_ip`, `destination_ip`, `source_port`, `destination_port`, `data_length`) VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})"""
         log_insert_query = log_insert_query.format(results[0], results[1], results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
         update_db(log_insert_query)
-        logging.warning("Log Parsed")
+        logging.warning("Filter Log Parsed")
     except:
         query = """INSERT INTO pfsense_log_bucket (log) VALUES ("{}")"""
         update_db(query.format(log))
@@ -271,5 +270,5 @@ def handle(log, pfsense_instance):
 #MAINLOOP
 loop = True
 while(loop == True):
-    collect_logs()
+    collect_filter_logs()
     time.sleep(int(os.environ["SYSLOG_POLL_INTERVAL"]))
