@@ -3,15 +3,16 @@
 #----------------------------------------------------
 #IMPORT LIBRARIES
 import logging
-import socketserver
 import mysql.connector
 import os
 import re
 import datetime
 import paramiko
+import time
 
 #ADD TO LOG
 logging.warning("Program Started")
+
 
 #SET DB PARAMETERS
 db_host = os.environ["DB_IP"]
@@ -19,10 +20,6 @@ db_user = os.environ["DB_USER"]
 db_password = os.environ["DB_PASS"]
 db_schema = os.environ["DB_SCHEMA"]
 db_port = os.environ["DB_PORT"]
-
-#LISTEN ON PORT 514
-HOST, PORT = "0.0.0.0", 514
-
 
 #----------------------------------------------------
 #UNDERLYING FUNCTIONS
@@ -148,25 +145,33 @@ def results_process(results_tup, checks_tup, instance):
         count = count + 1
     return(final_tup)
 
-#----------------------------------------------------
-#PRIMARY FUNCTIONS
-#----------------------------------------------------
-#PULL DATA FROM PFSENSE INSTANCES IN THE SYSTEM USING SSH
-def standard_ssh_checks():
+def return_clients():
     query = "SELECT id, reachable_ip, instance_user, instance_password, ssh_port FROM pfsense_instances"
     results = query_db(query)
     clients = []
     for row in results:
         client = [row[0], row[1], row[4], row[2], row[3]]
         clients = clients + [client,]
+    return(clients)
+
+def run_ssh_command(client, command):
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(client[1], client[2], username=client[3], password=client[4])
+    ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(command)
+    lines = ssh_stdout.readlines()
+    ssh.close()
+    return(lines)
+
+#----------------------------------------------------
+#PRIMARY FUNCTIONS
+#----------------------------------------------------
+#PULL DATA FROM PFSENSE INSTANCES IN THE SYSTEM USING SSH
+def standard_ssh_checks():
+    clients = return_clients()
     for client in clients:
         try:
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(client[1], client[2], username=client[3], password=client[4])
-            ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command("pfctl -vvsr")
-            lines = ssh_stdout.readlines()
-            ssh.close()
+            lines = run_ssh_command("pfctl -vvsr")
             for line in lines:
                 if(line[0] == "@"):
                     split = line.split("@", 1)[1].split("(", 1)
@@ -184,6 +189,14 @@ def standard_ssh_checks():
                         update_db(query_2)
         except:
             logging.warning("SSH Error for instance id: " + str(client[0]))
+
+def collect_logs():
+    clients = return_clients()
+    for client in clients:
+        pfsense_instance = client[0]
+        lines = run_ssh_command(client, "tail /var/log/filter.log")
+        for line in lines:
+            handle(line, pfsense_instance)
 
 #PARSE PFSENSE 2.5.x LOG DATA
 def log_process_25x(data):
@@ -215,62 +228,48 @@ def log_process_24x(data):
     final_result = (type_code, timestamp, log_type, rset)
     return(final_result)
 
-#CLASS TO HANDLE INCOMING UDP PACKETS
-class SyslogUDPHandler(socketserver.BaseRequestHandler):
-    def handle(self):
-        data = bytes.decode(self.request[0].strip())
-        log = str(data)
-        #Attempt to run data through available parsing functions
-        try:
-            #Attempt to parse as PfSense 2.5.x log
-            results = log_process_25x(log)
-            hostname = results[2]
-            sub_results = results[4]
-            results = [results[0], results[1], results[2], results[3]]
-            query_1 = "SELECT COUNT(*) FROM pfsense_instances WHERE hostname = '{}'"
-            query_1.format(hostname)
-            query_results = query_db(query_1)
-            if(query_results[0][0] == "0"):
-                query_2 = "INSERT INTO pfsense_instances (hostname) VALUES ('{}')"
-                query_2 = query_2.format(hostname)
-                update_db(query_2)
-            query_3 = "SELECT id FROM pfsense_instances WHERE hostname = '{}'"
-            pfsense_instance = query_db(query_3.format(hostname))[0][0]
-            results[2] = str(pfsense_instance)
-            results_checks = [
-                [3, "pfsense_log_type", ["log_type"], 2]
-                ]
-            results = results_process(results, results_checks, pfsense_instance)
-            sub_results_checks = [
-                [4, "pfsense_real_interface", ["interface", "pfsense_instance"], 3], 
-                [5, "pfsense_reason", ["reason"], 2], 
-                [6, "pfsense_act", ["act"], 2], 
-                [7, "pfsense_direction", ["direction"], 2],
-                [9, "pfsense_tos_header", ["tos_header"], 2],
-                [10, "pfsense_ecn_header", ["ecn_header"], 2],
-                [14, "pfsense_flags", ["flags"], 2],
-                [16, "pfsense_protocol", ["protocol"], 2],
-                [18, "pfsense_ip", ["ip"], 2],
-                [19, "pfsense_ip", ["ip"], 2]
-                ]
-            sub_results = results_process(sub_results, sub_results_checks, pfsense_instance)
-            sub_results = iterate_nulls(sub_results, 2, 99)
-            log_insert_query = """INSERT INTO `Dashboard_DB`.`pfsense_logs` (`type_code`, `record_time`, `pfsense_instance`, `log_type`, `rule_number`, `sub_rule_number`, `anchor`, `tracker`, `real_interface`, `reason`, `act`, `direction`, `ip_version`, `tos_header`, `ecn_header`, `ttl`, `packet_id`, `packet_offset`, `flags`, `protocol_id`, `protocol`, `packet_length`, `source_ip`, `destination_ip`, `source_port`, `destination_port`, `data_length`) VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})"""
-            log_insert_query = log_insert_query.format(results[0], results[1], results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
-            update_db(log_insert_query)
-            logging.warning("Log Parsed")
-        except:
-            query = """INSERT INTO pfsense_log_bucket (log) VALUES ("{}")"""
-            update_db(query.format(log))
-            logging.warning("Log added to PfSense Log Bucket")
-        if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
-            standard_ssh_checks()
-            logging.warning("SSH POLL TAKING PLACE")
+
+def handle(log, pfsense_instance):
+    #Attempt to run data through available parsing functions
+    try:
+        #Attempt to parse as PfSense 2.5.x log
+        results = log_process_25x(log)
+        hostname = results[2]
+        sub_results = results[4]
+        results = [results[0], results[1], results[2], results[3]]
+        results[2] = str(pfsense_instance)
+        results_checks = [
+            [3, "pfsense_log_type", ["log_type"], 2]
+            ]
+        results = results_process(results, results_checks, pfsense_instance)
+        sub_results_checks = [
+            [4, "pfsense_real_interface", ["interface", "pfsense_instance"], 3], 
+            [5, "pfsense_reason", ["reason"], 2], 
+            [6, "pfsense_act", ["act"], 2], 
+            [7, "pfsense_direction", ["direction"], 2],
+            [9, "pfsense_tos_header", ["tos_header"], 2],
+            [10, "pfsense_ecn_header", ["ecn_header"], 2],
+            [14, "pfsense_flags", ["flags"], 2],
+            [16, "pfsense_protocol", ["protocol"], 2],
+            [18, "pfsense_ip", ["ip"], 2],
+            [19, "pfsense_ip", ["ip"], 2]
+            ]
+        sub_results = results_process(sub_results, sub_results_checks, pfsense_instance)
+        sub_results = iterate_nulls(sub_results, 2, 99)
+        log_insert_query = """INSERT IGNORE INTO `Dashboard_DB`.`pfsense_logs` (`type_code`, `record_time`, `pfsense_instance`, `log_type`, `rule_number`, `sub_rule_number`, `anchor`, `tracker`, `real_interface`, `reason`, `act`, `direction`, `ip_version`, `tos_header`, `ecn_header`, `ttl`, `packet_id`, `packet_offset`, `flags`, `protocol_id`, `protocol`, `packet_length`, `source_ip`, `destination_ip`, `source_port`, `destination_port`, `data_length`) VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})"""
+        log_insert_query = log_insert_query.format(results[0], results[1], results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
+        update_db(log_insert_query)
+        logging.warning("Log Parsed")
+    except:
+        query = """INSERT INTO pfsense_log_bucket (log) VALUES ("{}")"""
+        update_db(query.format(log))
+        logging.warning("Log added to PfSense Log Bucket")
+    if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
+        standard_ssh_checks()
+        logging.warning("SSH POLL TAKING PLACE")
 
 #MAINLOOP
-if __name__ == "__main__":
-	try:
-		server = socketserver.UDPServer((HOST,PORT), SyslogUDPHandler)
-		server.serve_forever(poll_interval=float(os.environ["SYSLOG_POLL_INTERVAL"]))
-	except (IOError, SystemExit):
-		raise
+loop = True
+while(loop == True):
+    collect_logs()
+    time.sleep(int(os.environ["SYSLOG_POLL_INTERVAL"]))
