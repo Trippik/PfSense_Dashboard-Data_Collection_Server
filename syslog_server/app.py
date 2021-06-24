@@ -9,20 +9,20 @@ import datetime
 import paramiko
 import time
 import numpy as np
-import joblib
+import pickle
 
 #ADD TO LOG
 logging.warning("Program Started")
 
 #SET DB PARAMETERS
-db_host = "192.168.40.47"
-db_user = "root"
-db_password = "Cl0udyDay!"
-db_schema = "Dashboard_DB"
-db_port = "3306"
+db_host = os.environ["DB_IP"]
+db_user = os.environ["DB_USER"]
+db_password = os.environ["DB_PASS"]
+db_schema = os.environ["DB_SCHEMA"]
+db_port = os.environ["DB_PORT"]
 
 #SET STORAGE DIRECTORY
-dir = "D:/Downloads/PfSense_Dashboard-Data_Processing_Server-main/Testing"
+dir = "C:/Users/Cam/Desktop"
 
 #----------------------------------------------------
 #UNDERLYING FUNCTIONS
@@ -58,6 +58,8 @@ def row_sanitize(value, new_row):
     if(value == None):
         value = 0
     elif(value == "NaN"):
+        value = 0
+    elif(value == "NULL"):
         value = 0
     value = int(value)
     new_row = new_row + [value]
@@ -202,27 +204,8 @@ def standard_ssh_checks():
         except:
             logging.warning("SSH Error for instance id: " + str(client[0]))
 
-def ml_check(log_id, pfsense_instance):
-    log_query = """SELECT 
-	`pfsense_logs`.`type_code`,
-    `pfsense_logs`.`pfsense_instance`,
-    `pfsense_logs`.`log_type`,
-    `pfsense_logs`.`rule_number`,
-    `pfsense_logs`.`sub_rule_number`,
-    `pfsense_logs`.`anchor`,
-    `pfsense_logs`.`tracker`,
-    `pfsense_logs`.`real_interface`,
-    `pfsense_logs`.`reason`,
-    `pfsense_logs`.`act`,
-    `pfsense_logs`.`direction`,
-    `pfsense_logs`.`ip_version`,
-    `pfsense_logs`.`flags`,
-    `pfsense_logs`.`protocol`,
-    `pfsense_logs`.`source_ip`,
-    `pfsense_logs`.`destination_ip`,
-    `pfsense_logs`.`source_port`,
-    `pfsense_logs`.`destination_port` FROM pfsense_logs WHERE id = '{}'"""
-    result = query_db(log_query.format(log_id))[0]
+def ml_check(results, sub_results, pfsense_instance):
+    result = [results[0], pfsense_instance, results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[14], sub_results[16], sub_results[18], sub_results[19], sub_results[20], sub_results[21]]
     new_result = []
     for item in result:
         new_result = row_sanitize(item, new_result)
@@ -230,11 +213,10 @@ def ml_check(log_id, pfsense_instance):
     hostname_query = "SELECT hostname FROM pfsense_instances WHERE id = {}"
     hostname = query_db(hostname_query.format(pfsense_instance))[0][0]
     daily_model_location = os.path.join(dir + "/" + hostname)
-    model = joblib.load(daily_model_location + "/yesterday.joblib")
+    model = pickle.load(open(daily_model_location + "/yesterday.pickle", 'rb'))
     daily_predict = model.predict(new_result)
     return(daily_predict)
 
-    
 
 def collect_filter_logs():
     clients = return_clients()
@@ -271,7 +253,7 @@ def log_process_24x(data):
 
 def handle(log, pfsense_instance):
     #Attempt to run data through available parsing functions
-    #try:
+    try:
         try:
             #Attempt to parse as PfSense 2.5.x log
             results = log_process_25x(log)
@@ -308,23 +290,17 @@ def handle(log, pfsense_instance):
         log_insert_query = log_insert_query.format(results[0], results[1], results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
         update_db(log_insert_query)
         logging.warning("Filter Log Parsed")
-        id_query = """SELECT id FROM pfsense_logs WHERE type_code = {} AND record_time = '{}' AND pfsense_instance = {} AND log_type = {} AND rule_number = {} AND sub_rule_number = {} AND anchor = {} AND tracker = {} AND real_interface = {} AND reason = {} AND act = {} AND direction = {} AND ip_version = {} AND tos_header = {} AND ecn_header = {} AND ttl = {} AND packet_id = {} AND packet_offset = {} AND flags = {} AND protocol_id = {} AND protocol = {} AND packet_length = {} AND source_ip = {} AND destination_ip = {} AND source_port = {} AND destination_port = {} AND data_length = {}"""
-        id_query = id_query.format(results[0], results[1], results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])    
-        input(results[1])
-        input(id_query)
-        log_id = query_db(id_query)
-        input(log_id)
-        input(ml_check(log_id, pfsense_instance))
-    #except:
-    #    query = """INSERT INTO pfsense_log_bucket (log) VALUES ("{}")"""
-    #    update_db(query.format(log))
-    #    logging.warning("Log added to PfSense Log Bucket")
-    #if(int(datetime.datetime.now().strftime("%M")) % int(30) == 0 ):
-    #    standard_ssh_checks()
-    #    logging.warning("SSH POLL TAKING PLACE")
+        logging.warning(ml_check(results, sub_results, pfsense_instance))
+    except:
+        query = """INSERT INTO pfsense_log_bucket (log) VALUES ("{}")"""
+        update_db(query.format(log))
+        logging.warning("Log added to PfSense Log Bucket")
+    if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
+        standard_ssh_checks()
+        logging.warning("SSH POLL TAKING PLACE")
 
 #MAINLOOP
 loop = True
 while(loop == True):
     collect_filter_logs()
-    time.sleep(int(2))
+    time.sleep(int(os.environ["SYSLOG_POLL_INTERVAL"]))
