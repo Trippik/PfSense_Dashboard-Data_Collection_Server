@@ -22,7 +22,7 @@ db_schema = os.environ["DB_SCHEMA"]
 db_port = os.environ["DB_PORT"]
 
 #SET STORAGE DIRECTORY
-dir = "/var/models/"
+dir = ""
 
 #----------------------------------------------------
 #UNDERLYING FUNCTIONS
@@ -204,6 +204,7 @@ def standard_ssh_checks():
         except:
             logging.warning("SSH Error for instance id: " + str(client[0]))
 
+#Check results against ML models
 def ml_check(results, sub_results, pfsense_instance):
     result = [results[0], pfsense_instance, results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[14], sub_results[16], sub_results[18], sub_results[19], sub_results[20], sub_results[21]]
     new_result = []
@@ -217,7 +218,7 @@ def ml_check(results, sub_results, pfsense_instance):
     daily_predict = model.predict(new_result)
     return(daily_predict)
 
-
+#Collect filter logs from all clients
 def collect_filter_logs():
     clients = return_clients()
     for client in clients:
@@ -290,7 +291,10 @@ def handle(log, pfsense_instance):
         log_insert_query = log_insert_query.format(results[0], results[1], results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22])
         update_db(log_insert_query)
         logging.warning("Filter Log Parsed")
-        logging.warning(ml_check(results, sub_results, pfsense_instance))
+        try:
+            logging.warning(ml_check(results, sub_results, pfsense_instance))
+        except:
+            pass
     except:
         query = """INSERT INTO pfsense_log_bucket (log) VALUES ("{}")"""
         update_db(query.format(log))
