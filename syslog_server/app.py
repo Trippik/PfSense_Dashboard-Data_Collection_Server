@@ -224,6 +224,8 @@ def collect_filter_logs():
     for client in clients:
         pfsense_instance = client[0]
         lines = run_ssh_command(client, "tail /var/log/filter.log")
+        logging.warning(lines)
+        time.sleep(30)
         for line in lines:
             handle(line, pfsense_instance)
 
