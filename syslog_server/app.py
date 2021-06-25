@@ -22,7 +22,7 @@ db_schema = os.environ["DB_SCHEMA"]
 db_port = os.environ["DB_PORT"]
 
 #SET STORAGE DIRECTORY
-dir = ""
+dir = "/var/models"
 
 #----------------------------------------------------
 #UNDERLYING FUNCTIONS
@@ -224,8 +224,6 @@ def collect_filter_logs():
     for client in clients:
         pfsense_instance = client[0]
         lines = run_ssh_command(client, "tail /var/log/filter.log")
-        logging.warning(lines)
-        time.sleep(30)
         for line in lines:
             handle(line, pfsense_instance)
 
@@ -270,7 +268,6 @@ def handle(log, pfsense_instance):
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             sub_results = results[3]
             results = [results[0], timestamp, str(pfsense_instance), results[2]]
-            input(results)
         results_checks = [
             [3, "pfsense_log_type", ["log_type"], 2]
             ]
