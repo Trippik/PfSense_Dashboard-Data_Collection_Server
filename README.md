@@ -11,6 +11,9 @@ SYSLOG_POLL_INTERVAL = Interval in seconds at which to poll client instances for
 SSH_POLL_INTERVAL = Interval in mins at which to poll client instances for SSH derived info  
   
 *NB - The SYSLOG_POLL_INTERVAL must always be smaller than SSH_POLL_INTERVAL due to the method by which their functions are called, both of thhses variables must be integers*
+
+## Container Volumes
+The container will need a volume attached to it that is shared with the Data Processing container for the dashboard (https://github.com/Trippik/PfSense_Dashboard-Data_Processing_Server) mapped to /var/models to share ML models between the two containers.
   
 ## Network Requirements
 Container needs to be accessible to all remote PfSense instances.
