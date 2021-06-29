@@ -228,6 +228,15 @@ def collect_filter_logs():
         for line in lines:
             handle(line, pfsense_instance)
 
+#Collect OpenVPN logs from all clients
+def collect_OpenVPN_logs():
+    clients = return_clients()
+    for client in clients:
+        pfsense_instance = client[0]
+        lines = run_ssh_command(client, "tail /var/log/openvpn.log")
+        for line in lines:
+            open_vpn_handle(line, pfsense_instance)
+
 #PARSE PFSENSE 2.5.x LOG DATA
 def log_process_25x(data):
     result = element_find("<", ">1 ", data)
@@ -252,6 +261,10 @@ def log_process_24x(data):
     rset = rset.split(",")
     final_result = ("NULL", timestamp, log_type, rset)
     return(final_result)
+
+def open_vpn_handle(log, pfsense_instance):
+    query = """INSERT INTO pfsense_openvpn_logs (pfsense_instance, log) VALUES ({}, "{}")"""
+    update_db(query.format(str(pfsense_instance), log))
 
 def handle(log, pfsense_instance):
     #Attempt to run data through available parsing functions
@@ -304,6 +317,7 @@ def handle(log, pfsense_instance):
 loop = True
 while(loop == True):
     collect_filter_logs()
+    collect_OpenVPN_logs()
     if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
         standard_ssh_checks()
         logging.warning("SSH POLL TAKING PLACE")
