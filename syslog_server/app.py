@@ -186,7 +186,7 @@ def standard_ssh_checks():
     clients = return_clients()
     for client in clients:
         try:
-            lines = run_ssh_command("pfctl -vvsr")
+            lines = run_ssh_command(client, "pfctl -vvsr")
             for line in lines:
                 if(line[0] == "@"):
                     split = line.split("@", 1)[1].split("(", 1)
@@ -299,12 +299,12 @@ def handle(log, pfsense_instance):
         query = """INSERT INTO pfsense_log_bucket (log) VALUES ("{}")"""
         update_db(query.format(log))
         logging.warning("Log added to PfSense Log Bucket")
-    if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
-        standard_ssh_checks()
-        logging.warning("SSH POLL TAKING PLACE")
 
 #MAINLOOP
 loop = True
 while(loop == True):
     collect_filter_logs()
+    if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
+        standard_ssh_checks()
+        logging.warning("SSH POLL TAKING PLACE")
     time.sleep(int(os.environ["SYSLOG_POLL_INTERVAL"]))
