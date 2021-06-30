@@ -159,6 +159,17 @@ def results_process(results_tup, checks_tup, instance):
                 final_tup = final_tup + [result]
         count = count + 1
     return(final_tup)
+    
+def vpn_user_process(vpn_user):
+    count_query = """SELECT COUNT(*) FROM vpn_user WHERE user_name = {}"""
+    select_query = """SELECT id FROM vpn_user WHERE user_name = {}""" 
+    count = query_db(count_query.format(vpn_user))[0][0]
+    if(count == "0"):
+        insert_query = """INSERT INTO vpn_user (user_name) VALUES ({})"""
+        update_db(insert_query.format(vpn_user))
+    id = query_db(select_query.format(vpn_user))[0][0]
+    return(id)
+    
 
 def return_clients():
     query = "SELECT id, reachable_ip, instance_user, instance_password, ssh_port FROM pfsense_instances"
@@ -172,7 +183,7 @@ def return_clients():
 def run_ssh_command(client, command):
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(client[1], client[2], username=client[3], password=client[4])
+    ssh.connect(client[1], client[2], username=client[3], password=client[4], timeout=30)
     ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(command)
     lines = ssh_stdout.readlines()
     ssh.close()
@@ -237,6 +248,25 @@ def collect_OpenVPN_logs():
         for line in lines:
             open_vpn_handle(line, pfsense_instance)
 
+#PARSE PFSENSE 2.5.x OPENVPN LOG DATA
+def open_vpn_process_25x(data):
+    result = element_find("<", ">1 ", data)
+    type_code = result[0]
+    print("Type Code: " + type_code)
+    result_2 = result[1].split()
+    timestamp = result_2[0]
+    print("Timestamp: " + timestamp)
+    hostname = None
+    log_type = result_2[2]
+    print("Log Type: " + log_type)
+    if(type_code == "37"):
+        user_name = result_2[7]
+        print(user_name)
+        final_result = (1, type_code, timestamp, user_name)
+    else:
+        final_result = (2, type_code, timestamp, hostname, data)
+    return(final_result)
+
 #PARSE PFSENSE 2.5.x LOG DATA
 def log_process_25x(data):
     result = element_find("<", ">1 ", data)
@@ -263,7 +293,14 @@ def log_process_24x(data):
     return(final_result)
 
 def open_vpn_handle(log, pfsense_instance):
-    query = """INSERT INTO pfsense_openvpn_logs (pfsense_instance, log) VALUES ({}, "{}")"""
+    try:
+        results = collect_OpenVPN_logs()
+        for row in results:
+            log_details = open_vpn_process_25x(row[0])
+            if(log_details == 1):
+                user_id = vpn_user_process()
+    except:
+        logging.warning("OpenVPN Log Collection Error")
     update_db(query.format(str(pfsense_instance), log))
 
 def handle(log, pfsense_instance):
