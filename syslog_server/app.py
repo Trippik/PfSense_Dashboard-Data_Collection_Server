@@ -164,10 +164,13 @@ def vpn_user_process(vpn_user):
     count_query = """SELECT COUNT(*) FROM vpn_user WHERE user_name = {}"""
     select_query = """SELECT id FROM vpn_user WHERE user_name = {}""" 
     count = query_db(count_query.format(vpn_user))[0][0]
-    if(count == "0"):
+    logging.warning(str(count))
+    if(count == 0):
         insert_query = """INSERT INTO vpn_user (user_name) VALUES ({})"""
         update_db(insert_query.format(vpn_user))
-    id = query_db(select_query.format(vpn_user))[0][0]
+    id_raw = query_db(select_query.format(vpn_user))
+    logging.warning(id_raw)
+    id = id_raw[0][0]
     return(id)
     
 
@@ -252,19 +255,16 @@ def collect_OpenVPN_logs():
 def open_vpn_process_25x(data):
     result = element_find("<", ">1 ", data)
     type_code = result[0]
-    print("Type Code: " + type_code)
     result_2 = result[1].split()
     timestamp = result_2[0]
-    print("Timestamp: " + timestamp)
     hostname = None
     log_type = result_2[2]
-    print("Log Type: " + log_type)
     if(type_code == "37"):
         user_name = result_2[7]
         print(user_name)
-        final_result = (1, type_code, timestamp, user_name)
+        final_result = ("1", type_code, timestamp, user_name)
     else:
-        final_result = (2, type_code, timestamp, hostname, data)
+        final_result = ("2", type_code, timestamp, hostname, data)
     return(final_result)
 
 #PARSE PFSENSE 2.5.x LOG DATA
@@ -293,15 +293,16 @@ def log_process_24x(data):
     return(final_result)
 
 def open_vpn_handle(log, pfsense_instance):
-    try:
-        results = collect_OpenVPN_logs()
-        for row in results:
-            log_details = open_vpn_process_25x(row[0])
-            if(log_details == 1):
-                user_id = vpn_user_process()
-    except:
-        logging.warning("OpenVPN Log Collection Error")
-    update_db(query.format(str(pfsense_instance), log))
+    access_insert_query = """INSERT INTO `open_vpn_access_log` (`type_code`, `record_time`, `vpn_user`) VALUES ({}, "{}", {});"""
+    check_query = """SELECT COUNT(*) FROM open_vpn_access_log WHERE type_code = {} AND record_time = "{}" AND vpn_user = {}"""
+    row = open_vpn_process_25x(log)
+    raw_time = datetime.strftime(row[2], '%Y-%m-%d %H:%M:%S')
+    timestamp = raw_time.strftime('%Y-%m-%d %H:%M:%S')
+    if(row[0] == "1"):
+        vpn_user = vpn_user_process(row[3])
+        check_count = query_db(check_query.format(row[1], timestamp, vpn_user))[0][0]
+        if(check_count == 0):
+            update_db(access_insert_query.format(row[1], timestamp, vpn_user))
 
 def handle(log, pfsense_instance):
     #Attempt to run data through available parsing functions
