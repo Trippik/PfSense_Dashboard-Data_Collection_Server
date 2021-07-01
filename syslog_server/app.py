@@ -164,12 +164,10 @@ def vpn_user_process(vpn_user):
     count_query = """SELECT COUNT(*) FROM vpn_user WHERE user_name = {}"""
     select_query = """SELECT id FROM vpn_user WHERE user_name = {}""" 
     count = query_db(count_query.format(vpn_user))[0][0]
-    logging.warning(str(count))
     if(count == 0):
         insert_query = """INSERT INTO vpn_user (user_name) VALUES ({})"""
         update_db(insert_query.format(vpn_user))
     id_raw = query_db(select_query.format(vpn_user))
-    logging.warning(id_raw)
     id = id_raw[0][0]
     return(id)
     
@@ -261,7 +259,6 @@ def open_vpn_process_25x(data):
     log_type = result_2[2]
     if(type_code == "37"):
         user_name = result_2[7]
-        print(user_name)
         final_result = ("1", type_code, timestamp, user_name)
     else:
         final_result = ("2", type_code, timestamp, hostname, data)
@@ -293,16 +290,17 @@ def log_process_24x(data):
     return(final_result)
 
 def open_vpn_handle(log, pfsense_instance):
-    access_insert_query = """INSERT INTO `open_vpn_access_log` (`type_code`, `record_time`, `vpn_user`) VALUES ({}, "{}", {});"""
-    check_query = """SELECT COUNT(*) FROM open_vpn_access_log WHERE type_code = {} AND record_time = "{}" AND vpn_user = {}"""
+    access_insert_query = """INSERT INTO `open_vpn_access_log` (`type_code`, `record_time`, `vpn_user`, `pfsense_instance`) VALUES ({}, "{}", {}, {});"""
+    check_query = """SELECT COUNT(*) FROM open_vpn_access_log WHERE type_code = {} AND record_time = "{}" AND vpn_user = {} AND pfsense_instance = {}"""
     row = open_vpn_process_25x(log)
-    raw_time = datetime.strftime(row[2], '%Y-%m-%d %H:%M:%S')
+    raw_time = datetime.datetime.strptime(row[2], '%Y-%m-%dT%H:%M:%S.%f%z')
     timestamp = raw_time.strftime('%Y-%m-%d %H:%M:%S')
     if(row[0] == "1"):
         vpn_user = vpn_user_process(row[3])
-        check_count = query_db(check_query.format(row[1], timestamp, vpn_user))[0][0]
+        check_count = query_db(check_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))[0][0]
         if(check_count == 0):
-            update_db(access_insert_query.format(row[1], timestamp, vpn_user))
+            update_db(access_insert_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))
+            logging.warning("OpenVPN log-on added")
 
 def handle(log, pfsense_instance):
     #Attempt to run data through available parsing functions
