@@ -171,7 +171,6 @@ def vpn_user_process(vpn_user):
     id = id_raw[0][0]
     return(id)
     
-
 def return_clients():
     query = "SELECT id, reachable_ip, instance_user, instance_password, ssh_port FROM pfsense_instances"
     results = query_db(query)
@@ -190,6 +189,31 @@ def run_ssh_command(client, command):
     ssh.close()
     return(lines)
 
+def process_firewall_rules(client, lines):
+    new_rules = 0
+    existing_rules = 0
+    for line in lines:
+        if(line[0] == "@"):
+            split = line.split("@", 1)[1].split("(", 1)
+            rule_number = split[0]
+            description = split[1].split(")", 1)[1].lstrip()
+            query_2 = """INSERT INTO pfsense_firewall_rules (pfsense_instance, record_time, rule_number, rule_description) VALUES ({}, '{}', {}, '{}')"""
+            query_3 = """SELECT COUNT(*) FROM pfsense_firewall_rules WHERE pfsense_instance = {} AND rule_number = {} AND rule_description = '{}'"""
+            now = datetime.datetime.now()
+            timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+            query_3 = query_3.format(client[0], rule_number, description)
+            results = query_db(query_3)
+            if(int(results[0][0]) == 0):
+                query_2 = query_2.format(client[0], timestamp, rule_number, description)
+                new_rules = new_rules + 1
+                update_db(query_2)
+            elif(int(results[0][0]) > 0):
+                existing_rules = existing_rules + 1
+    logging.warning("Instance id: " + str(client[0]))
+    logging.warning(str(new_rules) + " New rules added")
+    logging.warning(str(existing_rules) + " Existing rules skipped")
+    logging.warning()
+
 #----------------------------------------------------
 #PRIMARY FUNCTIONS
 #----------------------------------------------------
@@ -199,21 +223,7 @@ def standard_ssh_checks():
     for client in clients:
         try:
             lines = run_ssh_command(client, "pfctl -vvsr")
-            for line in lines:
-                if(line[0] == "@"):
-                    split = line.split("@", 1)[1].split("(", 1)
-                    rule_number = split[0]
-                    description = split[1].split(")", 1)[1].lstrip()
-                    query_2 = """INSERT INTO pfsense_firewall_rules (pfsense_instance, record_time, rule_number, rule_description) VALUES ({}, '{}', {}, '{}')"""
-                    query_3 = """SELECT COUNT(*) FROM pfsense_firewall_rules WHERE pfsense_instance = {} AND rule_number = {} AND rule_description = '{}'"""
-                    now = datetime.datetime.now()
-                    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-                    query_3 = query_3.format(client[0], rule_number, description)
-                    results = query_db(query_3)
-                    if(results[0][0] == 0):
-                        query_2 = query_2.format(client[0], timestamp, rule_number, description)
-                        logging.warning("Rule Added for instance id: " + str(client[0]))
-                        update_db(query_2)
+            process_firewall_rules(client, lines)
         except:
             logging.warning("SSH Error for instance id: " + str(client[0]))
 
