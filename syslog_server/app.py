@@ -273,8 +273,6 @@ def check_instance_users(client):
 def standard_ssh_checks():
     clients = return_clients()
     for client in clients:
-        logging.warning()
-        logging.warning()
         logging.warning("----------------------------------------")
         logging.warning("Instance: " + str(client[0]))
         logging.warning("----------------------------------------")
