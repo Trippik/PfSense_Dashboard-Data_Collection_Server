@@ -209,11 +209,63 @@ def process_firewall_rules(client, lines):
                 update_db(query_2)
             elif(int(results[0][0]) > 0):
                 existing_rules = existing_rules + 1
-    logging.warning("Instance id: " + str(client[0]))
-    logging.warning(str(new_rules) + " New rules added")
-    logging.warning(str(existing_rules) + " Existing rules skipped")
-    logging.warning()
+    print("Instance id: " + str(client[0]))
+    print(str(new_rules) + " New rules added")
+    print(str(existing_rules) + " Existing rules skipped")
 
+def check_firewall_rules(client):
+    lines = run_ssh_command(client, "pfctl -vvsr")
+    process_firewall_rules(client, lines)
+
+def check_os_version(client):
+    alter_query = "UPDATE pfsense_instances SET freebsd_version = {}, pfsense_release = {} WHERE id = {}"
+    lines = run_ssh_command(client, "uname -a")
+    lines = lines[0].split(" ")
+    freebsd_version = lines[2]
+    pfsense_release = lines[5]
+    freebsd_version = str(single_dimension_index_read(freebsd_version, "freebsd_version", "freebsd_version"))
+    pfsense_release = str(single_dimension_index_read(pfsense_release, "pfsense_release", "pfsense_release"))
+    update_db(alter_query.format(freebsd_version, pfsense_release, client[0]))
+    print("FreeBSD Version: " + freebsd_version)
+    print("PfSense Release: " + pfsense_release)
+
+def check_instance_users(client):
+    lines = run_ssh_command(client, "logins")
+    count_broad = """SELECT COUNT(*) FROM pfsense_instance_users WHERE user_name = "{}" AND pfsense_instance = {}"""
+    count_specific = """SELECT COUNT(*) FROM pfsense_instance_users WHERE user_name = "{}" AND user_group = "{}" AND user_description = "{}" AND pfsense_instance = {}"""
+    record_insert = """INSERT INTO pfsense_instance_users (user_name, user_group, user_description, pfsense_instance) VALUES ("{}", "{}", "{}", {})"""
+    id_query = """SELECT id FROM pfsense_instance_users WHERE user_name = "{}" AND pfsense_instance = {}"""
+    record_update = """UPDATE pfsense_instance_users SET user_group = "{}", user_description = "{}" WHERE id = {}"""
+    added = 0
+    updated = 0
+    skipped = 0
+    for line in lines:
+        raw_result = line.split()
+        count = 0 
+        result = []
+        descrip = ""
+        for item in raw_result:
+            if(count < 4):
+                result = result + [item]
+            else:
+                descrip = descrip + " " + str(item)
+            count = count + 1
+        result = result + [descrip]
+        broad_count = query_db(count_broad.format(result[0], str(client[0])))[0][0]
+        if(broad_count == 0):
+            update_db(record_insert.format(result[0], result[2], result[4], str(client[0])))
+            added = added + 1
+        elif(broad_count > 0):
+            specific_count = query_db(count_specific.format(result[0], result[2], result[4], str(client[0])))[0][0]
+            if(specific_count == 0):
+                id = query_db(id_query.format(result[0], str(client[0])))[0][0]
+                update_db(record_update.format(result[2], result[4], str(id)))
+                updated = updated + 1
+            else:
+                skipped = skipped + 1
+    print("Instance Users Added: " + str(added))
+    print("Instance Users Updated: " + str(updated))
+    print("Instance Users Skipped: " + str(skipped))
 #----------------------------------------------------
 #PRIMARY FUNCTIONS
 #----------------------------------------------------
@@ -221,9 +273,17 @@ def process_firewall_rules(client, lines):
 def standard_ssh_checks():
     clients = return_clients()
     for client in clients:
+        logging.warning()
+        logging.warning()
+        logging.warning("----------------------------------------")
+        logging.warning("Instance: " + str(client[0]))
+        logging.warning("----------------------------------------")
         try:
-            lines = run_ssh_command(client, "pfctl -vvsr")
-            process_firewall_rules(client, lines)
+            check_firewall_rules(client)
+            logging.warning()  
+            check_os_version(client)
+            logging.warning()
+            check_instance_users(client)
         except:
             logging.warning("SSH Error for instance id: " + str(client[0]))
 
