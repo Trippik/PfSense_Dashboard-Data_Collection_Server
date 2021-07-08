@@ -277,10 +277,8 @@ def standard_ssh_checks():
         logging.warning("Instance: " + str(client[0]))
         logging.warning("----------------------------------------")
         try:
-            check_firewall_rules(client)
-            logging.warning()  
+            check_firewall_rules(client) 
             check_os_version(client)
-            logging.warning()
             check_instance_users(client)
         except:
             logging.warning("SSH Error for instance id: " + str(client[0]))
@@ -303,10 +301,20 @@ def ml_check(results, sub_results, pfsense_instance):
 def collect_filter_logs():
     clients = return_clients()
     for client in clients:
+        parsed = 0
+        bucket = 0
+        logging.warning("---------------------------------------")
+        logging.warning("PfSense Instance: " + client[1])
         pfsense_instance = client[0]
         lines = run_ssh_command(client, "tail /var/log/filter.log")
         for line in lines:
-            handle(line, pfsense_instance)
+            result = handle(line, pfsense_instance)
+            if(result == "parsed"):
+                parsed = parsed + 1
+            elif(result == "bucket"):
+                bucket = bucket + 1
+        logging.warning("Logs Parsed: " + str(parsed))
+        logging.warning("Logs Added to Bucket: " + str(bucket))
 
 #Collect OpenVPN logs from all clients
 def collect_OpenVPN_logs():
@@ -411,11 +419,11 @@ def handle(log, pfsense_instance):
         log_insert_query = """INSERT IGNORE INTO `Dashboard_DB`.`pfsense_logs` (`type_code`, `record_time`, `pfsense_instance`, `log_type`, `rule_number`, `sub_rule_number`, `anchor`, `tracker`, `real_interface`, `reason`, `act`, `direction`, `ip_version`, `tos_header`, `ecn_header`, `ttl`, `packet_id`, `packet_offset`, `flags`, `protocol_id`, `protocol`, `packet_length`, `source_ip`, `destination_ip`, `source_port`, `destination_port`, `data_length`, `previous_day_ml_check`) VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})"""
         log_insert_query = log_insert_query.format(results[0], results[1], results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22], ml_result)
         update_db(log_insert_query)
-        logging.warning("Filter Log Parsed")
+        return("parsed")
     except:
         query = """INSERT INTO pfsense_log_bucket (log) VALUES ("{}")"""
         update_db(query.format(log))
-        logging.warning("Log added to PfSense Log Bucket")
+        return("bucket")
 
 #MAINLOOP
 loop = True
