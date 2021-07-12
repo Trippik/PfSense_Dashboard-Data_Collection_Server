@@ -285,7 +285,7 @@ def standard_ssh_checks():
 
 #Check results against ML models
 def ml_check(results, sub_results, pfsense_instance, filename):
-    result = [results[0], pfsense_instance, results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[14], sub_results[16], sub_results[18], sub_results[19], sub_results[20], sub_results[21]]
+    result = [results[0], pfsense_instance, results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[14], sub_results[16], sub_results[18], sub_results[19], sub_results[21]]
     new_result = []
     for item in result:
         new_result = row_sanitize(item, new_result)
