@@ -373,17 +373,20 @@ def log_process_24x(data):
     return(final_result)
 
 def open_vpn_handle(log, pfsense_instance):
-    access_insert_query = """INSERT INTO `open_vpn_access_log` (`type_code`, `record_time`, `vpn_user`, `pfsense_instance`) VALUES ({}, "{}", {}, {});"""
-    check_query = """SELECT COUNT(*) FROM open_vpn_access_log WHERE type_code = {} AND record_time = "{}" AND vpn_user = {} AND pfsense_instance = {}"""
-    row = open_vpn_process_25x(log)
-    raw_time = datetime.datetime.strptime(row[2], '%Y-%m-%dT%H:%M:%S.%f%z')
-    timestamp = raw_time.strftime('%Y-%m-%d %H:%M:%S')
-    if(row[0] == "1"):
-        vpn_user = vpn_user_process(row[3])
-        check_count = query_db(check_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))[0][0]
-        if(check_count == 0):
-            update_db(access_insert_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))
-            logging.warning("OpenVPN log-on added")
+    try:
+        access_insert_query = """INSERT INTO `open_vpn_access_log` (`type_code`, `record_time`, `vpn_user`, `pfsense_instance`) VALUES ({}, "{}", {}, {});"""
+        check_query = """SELECT COUNT(*) FROM open_vpn_access_log WHERE type_code = {} AND record_time = "{}" AND vpn_user = {} AND pfsense_instance = {}"""
+        row = open_vpn_process_25x(log)
+        raw_time = datetime.datetime.strptime(row[2], '%Y-%m-%dT%H:%M:%S.%f%z')
+        timestamp = raw_time.strftime('%Y-%m-%d %H:%M:%S')
+        if(row[0] == "1"):
+            vpn_user = vpn_user_process(row[3])
+            check_count = query_db(check_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))[0][0]
+            if(check_count == 0):
+                update_db(access_insert_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))
+                logging.warning("OpenVPN log-on added")
+    except:
+        logging.warning("OPENVPN PARSING ERROR")
 
 def handle(log, pfsense_instance):
     #Attempt to run data through available parsing functions
