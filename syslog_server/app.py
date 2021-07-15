@@ -181,13 +181,13 @@ def return_clients():
     return(clients)
 
 def run_ssh_command(client, command):
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(client[1], client[2], username=client[3], password=client[4], timeout=30)
-    ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(command)
-    lines = ssh_stdout.readlines()
-    ssh.close()
-    return(lines)
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(client[1], client[2], username=client[3], password=client[4])
+        ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(command, timeout=5)
+        lines = ssh_stdout.readlines()
+        ssh.close()
+        return(lines)
 
 def process_firewall_rules(client, lines):
     new_rules = 0
@@ -436,9 +436,18 @@ def handle(log, pfsense_instance):
 #MAINLOOP
 loop = True
 while(loop == True):
-    collect_filter_logs()
-    collect_OpenVPN_logs()
+    try:
+        collect_filter_logs()
+    except:
+        pass
+    try:
+        collect_OpenVPN_logs()
+    except:
+        pass
     if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
-        standard_ssh_checks()
-        logging.warning("SSH POLL TAKING PLACE")
+        try:
+            standard_ssh_checks()
+            logging.warning("SSH POLL TAKING PLACE")
+        except:
+            pass
     time.sleep(int(os.environ["SYSLOG_POLL_INTERVAL"]))
