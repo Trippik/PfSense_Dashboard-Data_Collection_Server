@@ -302,11 +302,20 @@ def standard_ssh_checks():
         logging.warning("----------------------------------------")
         try:
             check_firewall_rules(client) 
+        except:
+            logging.warning("Firewall Rules Check Failed")
+        try:
             check_os_version(client)
+        except:
+            logging.warning("OS Version Check Failed")
+        try:
             check_instance_users(client)
+        except:
+            logging.warning("User Check Failed")
+        try:
             process_ipsec_connections(client)
         except:
-            logging.warning("SSH Error for instance id: " + str(client[0]))
+            logging.warning("IPSec Connections Check Failed")
 
 #Check results against ML models
 def ml_check(results, sub_results, pfsense_instance, filename):
@@ -501,7 +510,7 @@ def check_ipsec(client):
     return([["listening_ip_addresses", listening_ip_addresses], ["connections", connections], ["shunted_connections", shunted_connections], ["routed_connections", routed_connections], ["security_associations", security_associations]])
 
 def process_ipsec_connections(client):
-    connections = check_ipsec(client)
+    connections = check_ipsec(client)[1][1]
     client_id = str(client[0])
     processed_connections = []
     clear_current_connections_query = """DELETE FROM pfsense_ipsec_connections WHERE pfsense_instance = {}"""
@@ -548,8 +557,8 @@ while(loop == True):
         pass
     if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
         try:
-            standard_ssh_checks()
             logging.warning("SSH POLL TAKING PLACE")
+            standard_ssh_checks()
         except:
-            pass
+            logging.warning("SSH POLL ERROR")
     time.sleep(int(os.environ["SYSLOG_POLL_INTERVAL"]))
