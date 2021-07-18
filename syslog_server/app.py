@@ -266,6 +266,30 @@ def check_instance_users(client):
     print("Instance Users Added: " + str(added))
     print("Instance Users Updated: " + str(updated))
     print("Instance Users Skipped: " + str(skipped))
+
+def remove_empty_entries(tup):
+    new_tup = []
+    for item in tup:
+        if(item != ''):
+            new_tup = new_tup + [item]
+    return(new_tup)
+
+def ipsec_range_secondary_subprocess(range):
+    new_range = []
+    for item in range:
+        if(item == ', dpdaction=hold' or ''):
+            pass
+        else:
+            new_entry = item.split("|/0")[0]
+            new_range = new_range + [new_entry]
+    return(new_range)
+
+def ipsec_range_subprocess(local_ranges, remote_ranges):
+    local_ranges = local_ranges.split("|/0 TUNNEL")
+    remote_ranges = remote_ranges.split("|/0 TUNNEL")
+    local_ranges = ipsec_range_secondary_subprocess(local_ranges)
+    remote_ranges = ipsec_range_secondary_subprocess(remote_ranges)
+    return([local_ranges, remote_ranges])
 #----------------------------------------------------
 #PRIMARY FUNCTIONS
 #----------------------------------------------------
@@ -280,6 +304,7 @@ def standard_ssh_checks():
             check_firewall_rules(client) 
             check_os_version(client)
             check_instance_users(client)
+            process_ipsec_connections(client)
         except:
             logging.warning("SSH Error for instance id: " + str(client[0]))
 
@@ -432,6 +457,83 @@ def handle(log, pfsense_instance):
         query = """INSERT INTO pfsense_log_bucket (log) VALUES ("{}")"""
         update_db(query.format(log))
         return("bucket")
+
+def check_ipsec(client):
+    results = run_ssh_command(client, "ipsec statusall")
+    listening_ip_addresses = []
+    connections = []
+    shunted_connections = []
+    routed_connections = []
+    security_associations = []
+    mode = 0
+    for row in results:
+        row = row.split("\n")[0]
+        #Handle Listening IP addresses
+        if(mode == 0):
+            if(row == "Listening IP addresses:"):
+                mode = 1
+        if(mode == 1):
+            if(row == "Connections:"):
+                mode = 2
+            else:
+                listening_ip_addresses = listening_ip_addresses + [row]
+        #Handle Connections
+        elif(mode == 2):
+            if(row == "Shunted Connections:"):
+                mode = 3
+            else:
+                connections = connections + [row]
+        #Handle Shunted Connections
+        elif(mode == 3):
+            if(row == "Routed Connections:"):
+                mode = 4
+            else:
+                shunted_connections = shunted_connections + [row]
+        #Handle Routed Connections        
+        elif(mode == 4):
+            if(row.split((",", 1)[0]) == "Security Associations "):
+                mode = 5
+            else:
+                routed_connections = routed_connections + [row]
+        #Handle Security Associations
+        elif(mode == 5):
+            security_associations = security_associations + [row]
+    return([["listening_ip_addresses", listening_ip_addresses], ["connections", connections], ["shunted_connections", shunted_connections], ["routed_connections", routed_connections], ["security_associations", security_associations]])
+
+def process_ipsec_connections(client):
+    connections = check_ipsec(client)
+    client_id = str(client[0])
+    processed_connections = []
+    clear_current_connections_query = """DELETE FROM pfsense_ipsec_connections WHERE pfsense_instance = {}"""
+    update_db(clear_current_connections_query.format(client_id))
+    connection_insert_query = """INSERT IGNORE INTO pfsense_ipsec_connections (pfsense_instance, local_connection, remote_connection, local_ranges, remote_ranges) VALUES ({}, "{}", "{}", "{}", "{}")"""
+    for row in connections:
+        prefix = row.split(":", 1)
+        if(prefix[0].strip()[:3] == "con"):
+            details = prefix[1]
+            intermediary = details.split(":", 1)
+            start = intermediary[0].strip()
+            try:
+                entry = intermediary[1]
+                if(start == "local"):
+                    local = entry
+                elif(start == "remote"):
+                    remote = entry
+                elif(start == "child"):
+                    child = entry.strip()
+                    splits = child.split(" === ")
+                    local_ranges = splits[0]
+                    remote_ranges = splits[1]
+                    local_ranges = local_ranges.split("|/0 TUNNEL")[0]
+                    remote_ranges = remote_ranges.split("|/0 TUNNEL")[0]
+                    local_ranges = local_ranges.strip().split("|/0")
+                    remote_ranges = remote_ranges.strip().split("|/0")
+                    local_ranges = remove_empty_entries(local_ranges)
+                    remote_ranges = remove_empty_entries(remote_ranges)
+                update_db(connection_insert_query.format(client_id, local, remote, local_ranges, remote_ranges))
+                processed_connections = processed_connections + [[local, remote, local_ranges, remote_ranges]]
+            except:
+                pass
 
 #MAINLOOP
 loop = True
