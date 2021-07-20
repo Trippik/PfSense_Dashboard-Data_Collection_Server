@@ -290,6 +290,14 @@ def ipsec_range_subprocess(local_ranges, remote_ranges):
     local_ranges = ipsec_range_secondary_subprocess(local_ranges)
     remote_ranges = ipsec_range_secondary_subprocess(remote_ranges)
     return([local_ranges, remote_ranges])
+
+def interface_sanitize(interfaces):
+    new_interfaces = []
+    for interface in interfaces:
+        if(len(interface) == 9):
+            new_interfaces = new_interfaces + [interface]
+    return(new_interfaces)
+
 #----------------------------------------------------
 #PRIMARY FUNCTIONS
 #----------------------------------------------------
@@ -316,6 +324,10 @@ def standard_ssh_checks():
             process_ipsec_connections(client)
         except:
             logging.warning("IPSec Connections Check Failed")
+        try:
+            interface_process(client)
+        except:
+            logging.warning("Interface Check Failed")
 
 #Check results against ML models
 def ml_check(results, sub_results, pfsense_instance, filename):
@@ -515,10 +527,9 @@ def check_ipsec(client):
 
 def process_ipsec_connections(client):
     connections = check_ipsec(client)[1][1]
-    client_id = str(client[0])
     processed_connections = []
     clear_current_connections_query = """DELETE FROM pfsense_ipsec_connections WHERE pfsense_instance = {}"""
-    update_db(clear_current_connections_query.format(client_id))
+    update_db(clear_current_connections_query.format(str(client[0])))
     connection_insert_query = """INSERT IGNORE INTO pfsense_ipsec_connections (pfsense_instance, local_connection, remote_connection, local_ranges, remote_ranges) VALUES ({}, "{}", "{}", "{}", "{}")"""
     for row in connections:
         prefix = row.split(":", 1)
@@ -530,8 +541,10 @@ def process_ipsec_connections(client):
                 entry = intermediary[1]
                 if(start == "local"):
                     local = entry
+                    local = local.split("]", 1)[0].split("[", 1)[1]
                 elif(start == "remote"):
                     remote = entry
+                    remote = remote.split("]", 1)[0].split("[", 1)[1]
                 elif(start == "child"):
                     child = entry.strip()
                     splits = child.split(" === ")
@@ -543,10 +556,70 @@ def process_ipsec_connections(client):
                     remote_ranges = remote_ranges.strip().split("|/0")
                     local_ranges = remove_empty_entries(local_ranges)
                     remote_ranges = remove_empty_entries(remote_ranges)
-                update_db(connection_insert_query.format(client_id, local, remote, local_ranges, remote_ranges))
+                update_db(connection_insert_query.format(str(client[0]), local, remote, local_ranges, remote_ranges))
                 processed_connections = processed_connections + [[local, remote, local_ranges, remote_ranges]]
             except:
                 pass
+    logging.warning(processed_connections)
+
+def interface_check(client):
+    raw_results = run_ssh_command(client, "ifconfig -a")
+    interfaces = []
+    new_interface = []
+    count = 0
+    for row in raw_results:
+        if("\n" and not "\t" in row):
+            interfaces = interfaces + [new_interface]
+            interface = row.split(":", 1)[0]
+            new_interface = [interface]
+            count = count + 1
+        elif("\n" and "\t" in row):
+            if('\tdescription' in row):
+                result = row.split(":", 1)[1].strip(" ").strip("\n")
+            elif('\tether' in row):
+                result = row.split(" ", 1)[1].strip(" ").strip("\n")
+            elif('\toptions=' in row):
+                result = row.split("=", 1)[1].strip(" ").strip("\n")
+            elif('\tinet6' in row):
+                result = row.split(" ", 1)[1].split("%")[0]
+            elif('\tinet' in row):
+                result = row.split(" ", 1)[1].split(" netmask")[0]
+            elif('\tmedia' in row):
+                result = row.split(": ", 1)[1].strip("\n")
+            elif('\tstatus' in row):
+                result = row.split(": ", 1)[1].strip("\n")
+            else:
+                pass
+            new_interface = new_interface + [result]
+    interfaces = interface_sanitize(interfaces)
+    return(interfaces)
+
+def interface_process(client):
+    interfaces = interface_check(client)
+    clearing_query = "DELETE FROM pfsense_instance_interfaces WHERE pfsense_instance = {}"
+    query = """INSERT IGNORE INTO `pfsense_instance_interfaces`
+(`pfsense_instance`,
+`interface_name`,
+`interface_description`,
+`interface_attributes`,
+`mac_address`,
+`ipv6_address`,
+`ipv4_address`,
+`interface_type`,
+`interface_status`)
+VALUES
+({},
+"{}",
+"{}",
+"{}",
+"{}",
+"{}",
+"{}",
+"{}",
+"{}")"""
+    update_db(clearing_query.format(str(client[0])))
+    for interface in interfaces:
+        update_db(query.format(client[0], interface[0], interface[1], interface[2], interface[3], interface[4], interface[5], interface[6], interface[6]))
 
 #MAINLOOP
 loop = True
