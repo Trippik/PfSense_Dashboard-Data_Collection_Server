@@ -530,6 +530,7 @@ def process_ipsec_connections(client):
     clear_current_connections_query = """DELETE FROM pfsense_ipsec_connections WHERE pfsense_instance = {}"""
     update_db(clear_current_connections_query.format(client_id))
     connection_insert_query = """INSERT IGNORE INTO pfsense_ipsec_connections (pfsense_instance, local_connection, remote_connection, local_ranges, remote_ranges) VALUES ({}, "{}", "{}", "{}", "{}")"""
+    connection_check_query = '''SELECT COUNT(*) FROM pfsense_ipsec_connections WHERE pfsense_instance = {} AND local_connection = "{}" AND remote_connection = "{}" AND local_ranges = "{}" AND remote_ranges = "{}"'''
     for row in connections:
         prefix = row.split(":", 1)
         if(prefix[0].strip()[:3] == "con"):
@@ -539,9 +540,11 @@ def process_ipsec_connections(client):
             try:
                 entry = intermediary[1]
                 if(start == "local"):
-                    local = entry
+                    local = entry.split("]", 1)[0]
+                    local = local.split("[", 1)[1]
                 elif(start == "remote"):
-                    remote = entry
+                    remote = entry.split("]", 1)[0]
+                    remote = remote.split("[", 1)[1]
                 elif(start == "child"):
                     child = entry.strip()
                     splits = child.split(" === ")
@@ -553,8 +556,12 @@ def process_ipsec_connections(client):
                     remote_ranges = remote_ranges.strip().split("|/0")
                     local_ranges = remove_empty_entries(local_ranges)
                     remote_ranges = remove_empty_entries(remote_ranges)
-                update_db(connection_insert_query.format(client_id, local, remote, local_ranges, remote_ranges))
-                processed_connections = processed_connections + [[local, remote, local_ranges, remote_ranges]]
+                check = query_db(connection_check_query.format(client_id, local, remote, local_ranges, remote_ranges))[0][0]
+                if(check == 0):
+                    update_db(connection_insert_query.format(client_id, local, remote, local_ranges, remote_ranges))
+                    processed_connections = processed_connections + [[local, remote, local_ranges, remote_ranges]]
+                else:
+                    pass
             except:
                 pass
 
