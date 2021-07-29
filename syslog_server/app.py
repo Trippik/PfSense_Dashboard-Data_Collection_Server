@@ -11,6 +11,7 @@ import time
 import numpy as np
 import pickle
 from sklearn.ensemble import IsolationForest
+import io
 
 #ADD TO LOG
 logging.warning("Program Started")
@@ -172,18 +173,22 @@ def vpn_user_process(vpn_user):
     return(id)
     
 def return_clients():
-    query = "SELECT id, reachable_ip, instance_user, instance_password, ssh_port FROM pfsense_instances"
+    query = "SELECT id, reachable_ip, instance_user, instance_password, ssh_port, private_key FROM pfsense_instances"
     results = query_db(query)
     clients = []
     for row in results:
-        client = [row[0], row[1], row[4], row[2], row[3]]
+        client = [row[0], row[1], row[4], row[2], row[3], row[5]]
         clients = clients + [client,]
     return(clients)
 
 def run_ssh_command(client, command):
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(client[1], client[2], username=client[3], password=client[4])
+        if(client[5] == None):
+            ssh.connect(client[1], client[2], username=client[3], password=client[4])
+        else:
+            pkey = paramiko.RSAKey.from_private_key(io.StringIO(client[5]))
+            ssh.connect(client[1], client[2], username=client[3], password=client[4], pkey=pkey)
         ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(command, timeout=5)
         lines = ssh_stdout.readlines()
         ssh.close()
