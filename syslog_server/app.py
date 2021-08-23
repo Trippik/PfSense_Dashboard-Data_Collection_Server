@@ -303,6 +303,20 @@ def interface_sanitize(interfaces):
             new_interfaces = new_interfaces + [interface]
     return(new_interfaces)
 
+def return_whitelist(client):
+    client_id = client[0]
+    query = """SELECT ip, destination_port FROM whitelist WHERE pfsense_instance = {}"""
+    whitelist_raw = query_db(query.format(str(client_id)))
+    whitelist = []
+    for row in whitelist_raw:
+        whitelist = whitelist + [[row[0], row[1]]]
+    return(whitelist)
+
+def percent_process(rate, total):
+    dec = rate / total
+    percent = int(dec * 100)
+    percent = str(percent) + "%"
+    return(percent)
 
 #----------------------------------------------------
 #PRIMARY FUNCTIONS
@@ -314,6 +328,10 @@ def standard_ssh_checks():
         logging.warning("----------------------------------------")
         logging.warning("Instance: " + str(client[0]))
         logging.warning("----------------------------------------")
+        try:
+            error_percent(client)
+        except:
+            logging.warning("Error Percent Failed")
         try:
             check_firewall_rules(client) 
         except:
@@ -334,6 +352,28 @@ def standard_ssh_checks():
             interface_process(client)
         except:
             logging.warning("Interface Check Failed")
+
+def error_percent(client):
+    last_log_query = """SELECT record_time FROM pfsense_logs WHERE pfsense_instance = {} ORDER BY record_time DESC LIMIT 1"""
+    count_days_logs = """SELECT COUNT(*) FROM pfsense_logs WHERE pfsense_instance = {} AND record_time < '{}' AND record_time > '{}'"""
+    count_days_errors = """SELECT COUNT(*) FROM pfsense_logs WHERE pfsense_instance = {} AND record_time < '{}' AND record_time > '{}' AND previous_day_ml_check = {}"""
+    count_week_errors = """SELECT COUNT(*) FROM pfsense_logs WHERE pfsense_instance = {} AND record_time < '{}' AND record_time > '{}' AND previous_week_ml_check = {}"""
+    count_both_errors = """SELECT COUNT(*) FROM pfsense_logs WHERE pfsense_instance = {} AND record_time < '{}' AND record_time > '{}' AND previous_day_ml_check = {} AND previous_week_ml_check = {}"""
+    delete_entries = """DELETE FROM error_rates WHERE pfsense_instance = {}"""
+    add_entry = """INSERT INTO error_rates (pfsense_instance, daily_error, weekly_error, joint_error) VALUES ({}, '{}', '{}', '{}')"""
+    last_time = query_db(last_log_query.format(client[0]))[0][0]
+    last_time = last_time.strftime('%Y-%m-%d %H:%M:%S')
+    now = datetime.datetime.now()
+    today = now.strftime('%Y-%m-%d')
+    log_count = int(query_db(count_days_logs.format(client[0], last_time, today))[0][0])
+    daily_error_rate = int(query_db(count_days_errors.format(client[0], last_time, today, "-1"))[0][0])
+    weekly_error_rate = int(query_db(count_week_errors.format(client[0], last_time, today, "-1"))[0][0])
+    joint_error_rate = int(query_db(count_both_errors.format(client[0], last_time, today, "-1", "-1"))[0][0])
+    daily_error_percent = percent_process(daily_error_rate, log_count)
+    weekly_error_percent = percent_process(weekly_error_rate, log_count)
+    joint_error_percent = percent_process(joint_error_rate, log_count)
+    update_db(delete_entries.format(str(client[0])))
+    update_db(add_entry.format(str(client[0]), daily_error_percent, weekly_error_percent, joint_error_percent))
 
 def interface_check(client):
     raw_results = run_ssh_command(client, "ifconfig -a")
@@ -427,23 +467,30 @@ def ml_process(results, sub_results, pfsense_instance, filename):
 def collect_filter_logs():
     clients = return_clients()
     for client in clients:
+        whitelist = return_whitelist(client)
         parsed = 0
         bucket = 0
         existing = 0
+        whitelisted = 0
         logging.warning("---------------------------------------")
+        logging.warning("Log Collection")
         logging.warning("PfSense Instance: " + client[1])
         pfsense_instance = client[0]
-        lines = run_ssh_command(client, "tail /var/log/filter.log")
+        lines = run_ssh_command(client, "tail -10 /var/log/filter.log")
+        logging.warning("Raw Logs Collected")
         for line in lines:
-            result = handle(line, pfsense_instance)
+            result = handle(line, pfsense_instance, whitelist)
             if(result == "parsed"):
                 parsed = parsed + 1
             elif(result == "bucket"):
                 bucket = bucket + 1
-            elif(result == "Existing"):
+            elif(result == "existing"):
                 existing = existing + 1
+            elif(result == "whitelisted"):
+                whitelisted = whitelisted + 1
         logging.warning("Logs Parsed: " + str(parsed))
         logging.warning("Logs Skipped: " + str(existing))
+        logging.warning("Logs Whitelisted: " + str(whitelisted))
         logging.warning("Logs Added to Bucket: " + str(bucket))
 
 #Collect OpenVPN logs from all clients
@@ -511,18 +558,19 @@ def open_vpn_handle(log, pfsense_instance):
     except:
         logging.warning("OPENVPN PARSING ERROR")
 
-def handle(log, pfsense_instance):
+def handle(log, pfsense_instance, whitelist):
     #Attempt to run data through available parsing functions
     existing_query = """SELECT COUNT(*) FROM `Dashboard_DB`.`pfsense_logs` WHERE `type_code`= {} AND `record_time`= '{}' AND `pfsense_instance`= {} AND `log_type`= {} AND `rule_number`= {} AND `sub_rule_number`= {} AND `anchor`= {} AND `tracker`= {} AND `real_interface`= {} AND `reason`= {} AND `act`= {} AND `direction`= {} AND `ip_version`= {} AND `tos_header`= {} AND `ecn_header`= {} AND `ttl`= {} AND `packet_id`= {} AND `packet_offset`= {} AND `flags`= {} AND `protocol_id`= {} AND `protocol`= {} AND `packet_length`= {} AND `source_ip`= {} AND `destination_ip`= {} AND `source_port`= {} AND `destination_port`= {} AND `data_length`= {}"""
     log_insert_query = """INSERT IGNORE INTO `Dashboard_DB`.`pfsense_logs` (`type_code`, `record_time`, `pfsense_instance`, `log_type`, `rule_number`, `sub_rule_number`, `anchor`, `tracker`, `real_interface`, `reason`, `act`, `direction`, `ip_version`, `tos_header`, `ecn_header`, `ttl`, `packet_id`, `packet_offset`, `flags`, `protocol_id`, `protocol`, `packet_length`, `source_ip`, `destination_ip`, `source_port`, `destination_port`, `data_length`, `previous_day_ml_check`, `previous_week_ml_check`, `combined_ml_check`) VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})"""
     try:
+        message = None
+        #Attempt to parse as PfSense 2.5.x log
         try:
-            #Attempt to parse as PfSense 2.5.x log
             results = log_process_25x(log)
             hostname = results[2]
             sub_results = results[4]
             results = [results[0], results[1], str(pfsense_instance), results[3]]
-            #Attempt to parse as PfSense 2.4.x log
+        #If Unable to parse as 2.5.x parse as PfSense 2.4.x log
         except:
             log = log.strip("\n")
             results = log_process_24x(log)
@@ -551,20 +599,28 @@ def handle(log, pfsense_instance):
         date_time = time.strftime("%Y-%m-%d %H:%M:%S")
         existing = query_db(existing_query.format(results[0], date_time, results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22]))[0][0]
         if(existing == 0):
-            daily_ml_result = ml_process(results, sub_results, pfsense_instance, "yesterday")
-            weekly_ml_result = ml_process(results, sub_results, pfsense_instance, "last_week")
+            target = [sub_results[18], sub_results[20]]
+            if((target in whitelist) == True):
+                message = "whitelisted"
+                daily_ml_result = 1
+                weekly_ml_result = 1
+            else:
+                daily_ml_result = ml_process(results, sub_results, pfsense_instance, "yesterday")
+                weekly_ml_result = ml_process(results, sub_results, pfsense_instance, "last_week")
             if(daily_ml_result == -1 and weekly_ml_result == -1):
                 combined_ml_result = "-1"
             else:
                 combined_ml_result = "1"
             update_db(log_insert_query.format(results[0], date_time, results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22], daily_ml_result, weekly_ml_result, combined_ml_result))
-            return("parsed")
+            if(message == None):
+                message = "parsed"
         else:
-            return("Existing")
+            message = "existing"
     except:
         query = """INSERT INTO pfsense_log_bucket (log) VALUES ("{}")"""
         update_db(query.format(log))
-        return("bucket")
+        message = "bucket"
+    return(message)
 
 def check_ipsec(client):
     results = run_ssh_command(client, "ipsec statusall")
