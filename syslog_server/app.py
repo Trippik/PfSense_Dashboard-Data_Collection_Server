@@ -3,7 +3,6 @@
 #----------------------------------------------------
 #IMPORT LIBRARIES
 import logging
-import mysql.connector
 import os
 import datetime
 import paramiko
@@ -12,6 +11,8 @@ import numpy as np
 import pickle
 from sklearn.ensemble import IsolationForest
 import io
+
+from lib import db_handler
 
 #ADD TO LOG
 logging.warning("Program Started")
@@ -29,32 +30,6 @@ dir = "/var/models"
 #----------------------------------------------------
 #UNDERLYING FUNCTIONS
 #----------------------------------------------------
-#READ FROM DB
-def query_db(query):
-    db = mysql.connector.connect(
-        host=db_host,
-        user=db_user,
-        password=db_password,
-        database=db_schema,
-        port=db_port
-    )
-    cursor = db.cursor()
-    cursor.execute(query)
-    result = cursor.fetchall()
-    return(result)
-
-#WRITE TO DB
-def update_db(query):
-    db = mysql.connector.connect(
-        host=db_host,
-        user=db_user,
-        password=db_password,
-        database=db_schema,
-        port=db_port
-    )
-    cursor = db.cursor()
-    cursor.execute(query)
-    db.commit()
 
 def row_sanitize(value, new_row):
     if(value == None):
@@ -106,28 +81,28 @@ def iterate_nulls(tup, mode, count):
 
 def double_dimension_index_add(results, table, var_names):
     query = """INSERT INTO {} ({}, {}) VALUES ('{}', {})"""
-    update_db(query.format(table, var_names[0], var_names[1], results[0], results[1]))
+    db_handler.update_db(query.format(table, var_names[0], var_names[1], results[0], results[1]))
 
 def double_dimension_index_read(results, table, var_names):
     query = """SELECT id FROM {} WHERE {} = '{}' AND {} = {}"""
-    query_result = query_db(query.format(table, var_names[0], results[0], var_names[1], var_names[1]))
+    query_result = db_handler.query_db(query.format(table, var_names[0], results[0], var_names[1], var_names[1]))
     if(len(query_result) == 0):
         double_dimension_index_add(results, table, var_names)
-        id = query_db(query.format(table, var_names[0], results[0], var_names[1], var_names[1]))[0][0]
+        id = db_handler.query_db(query.format(table, var_names[0], results[0], var_names[1], var_names[1]))[0][0]
     else:
         id = query_result[0][0]
     return(id)  
 
 def single_dimension_index_add(result, table, var_name):
     query = """INSERT INTO {} ({}) VALUES ('{}')"""
-    update_db(query.format(table, var_name, result))
+    db_handler.update_db(query.format(table, var_name, result))
 
 def single_dimension_index_read(result, table, var_name):
     query = """SELECT id FROM {} WHERE {} = '{}'"""
-    query_result = query_db(query.format(table, var_name, result))
+    query_result = db_handler.query_db(query.format(table, var_name, result))
     if(len(query_result) == 0):
         single_dimension_index_add(result, table, var_name)
-        id = query_db(query.format(table, var_name, result))[0][0]
+        id = db_handler.query_db(query.format(table, var_name, result))[0][0]
     else:
         id = query_result[0][0]
     return(id)
@@ -164,17 +139,17 @@ def results_process(results_tup, checks_tup, instance):
 def vpn_user_process(vpn_user):
     count_query = """SELECT COUNT(*) FROM vpn_user WHERE user_name = {}"""
     select_query = """SELECT id FROM vpn_user WHERE user_name = {}""" 
-    count = query_db(count_query.format(vpn_user))[0][0]
+    count = db_handler.query_db(count_query.format(vpn_user))[0][0]
     if(count == 0):
         insert_query = """INSERT INTO vpn_user (user_name) VALUES ({})"""
-        update_db(insert_query.format(vpn_user))
-    id_raw = query_db(select_query.format(vpn_user))
+        db_handler.update_db(insert_query.format(vpn_user))
+    id_raw = db_handler.query_db(select_query.format(vpn_user))
     id = id_raw[0][0]
     return(id)
     
 def return_clients():
     query = "SELECT id, reachable_ip, instance_user, instance_password, ssh_port, private_key FROM pfsense_instances"
-    results = query_db(query)
+    results = db_handler.query_db(query)
     clients = []
     for row in results:
         client = [row[0], row[1], row[4], row[2], row[3], row[5]]
@@ -207,11 +182,11 @@ def process_firewall_rules(client, lines):
             now = datetime.datetime.now()
             timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
             query_3 = query_3.format(client[0], rule_number, description)
-            results = query_db(query_3)
+            results = db_handler.query_db(query_3)
             if(int(results[0][0]) == 0):
                 query_2 = query_2.format(client[0], timestamp, rule_number, description)
                 new_rules = new_rules + 1
-                update_db(query_2)
+                db_handler.update_db(query_2)
             elif(int(results[0][0]) > 0):
                 existing_rules = existing_rules + 1
     print("Instance id: " + str(client[0]))
@@ -230,7 +205,7 @@ def check_os_version(client):
     pfsense_release = lines[5]
     freebsd_version = str(single_dimension_index_read(freebsd_version, "freebsd_version", "freebsd_version"))
     pfsense_release = str(single_dimension_index_read(pfsense_release, "pfsense_release", "pfsense_release"))
-    update_db(alter_query.format(freebsd_version, pfsense_release, client[0]))
+    db_handler.update_db(alter_query.format(freebsd_version, pfsense_release, client[0]))
     print("FreeBSD Version: " + freebsd_version)
     print("PfSense Release: " + pfsense_release)
 
@@ -256,15 +231,15 @@ def check_instance_users(client):
                 descrip = descrip + " " + str(item)
             count = count + 1
         result = result + [descrip]
-        broad_count = query_db(count_broad.format(result[0], str(client[0])))[0][0]
+        broad_count = db_handler.query_db(count_broad.format(result[0], str(client[0])))[0][0]
         if(broad_count == 0):
-            update_db(record_insert.format(result[0], result[2], result[4], str(client[0])))
+            db_handler.update_db(record_insert.format(result[0], result[2], result[4], str(client[0])))
             added = added + 1
         elif(broad_count > 0):
-            specific_count = query_db(count_specific.format(result[0], result[2], result[4], str(client[0])))[0][0]
+            specific_count = db_handler.query_db(count_specific.format(result[0], result[2], result[4], str(client[0])))[0][0]
             if(specific_count == 0):
-                id = query_db(id_query.format(result[0], str(client[0])))[0][0]
-                update_db(record_update.format(result[2], result[4], str(id)))
+                id = db_handler.query_db(id_query.format(result[0], str(client[0])))[0][0]
+                db_handler.update_db(record_update.format(result[2], result[4], str(id)))
                 updated = updated + 1
             else:
                 skipped = skipped + 1
@@ -306,7 +281,7 @@ def interface_sanitize(interfaces):
 def return_whitelist(client):
     client_id = client[0]
     query = """SELECT ip, destination_port FROM whitelist WHERE pfsense_instance = {}"""
-    whitelist_raw = query_db(query.format(str(client_id)))
+    whitelist_raw = db_handler.query_db(query.format(str(client_id)))
     whitelist = []
     for row in whitelist_raw:
         whitelist = whitelist + [[row[0], row[1]]]
@@ -361,19 +336,19 @@ def error_percent(client):
     count_both_errors = """SELECT COUNT(*) FROM pfsense_logs WHERE pfsense_instance = {} AND record_time < '{}' AND record_time > '{}' AND previous_day_ml_check = {} AND previous_week_ml_check = {}"""
     delete_entries = """DELETE FROM error_rates WHERE pfsense_instance = {}"""
     add_entry = """INSERT INTO error_rates (pfsense_instance, daily_error, weekly_error, joint_error) VALUES ({}, '{}', '{}', '{}')"""
-    last_time = query_db(last_log_query.format(client[0]))[0][0]
+    last_time = db_handler.query_db(last_log_query.format(client[0]))[0][0]
     last_time = last_time.strftime('%Y-%m-%d %H:%M:%S')
     now = datetime.datetime.now()
     today = now.strftime('%Y-%m-%d')
-    log_count = int(query_db(count_days_logs.format(client[0], last_time, today))[0][0])
-    daily_error_rate = int(query_db(count_days_errors.format(client[0], last_time, today, "-1"))[0][0])
-    weekly_error_rate = int(query_db(count_week_errors.format(client[0], last_time, today, "-1"))[0][0])
-    joint_error_rate = int(query_db(count_both_errors.format(client[0], last_time, today, "-1", "-1"))[0][0])
+    log_count = int(db_handler.query_db(count_days_logs.format(client[0], last_time, today))[0][0])
+    daily_error_rate = int(db_handler.query_db(count_days_errors.format(client[0], last_time, today, "-1"))[0][0])
+    weekly_error_rate = int(db_handler.query_db(count_week_errors.format(client[0], last_time, today, "-1"))[0][0])
+    joint_error_rate = int(db_handler.query_db(count_both_errors.format(client[0], last_time, today, "-1", "-1"))[0][0])
     daily_error_percent = percent_process(daily_error_rate, log_count)
     weekly_error_percent = percent_process(weekly_error_rate, log_count)
     joint_error_percent = percent_process(joint_error_rate, log_count)
-    update_db(delete_entries.format(str(client[0])))
-    update_db(add_entry.format(str(client[0]), daily_error_percent, weekly_error_percent, joint_error_percent))
+    db_handler.update_db(delete_entries.format(str(client[0])))
+    db_handler.update_db(add_entry.format(str(client[0]), daily_error_percent, weekly_error_percent, joint_error_percent))
 
 def interface_check(client):
     raw_results = run_ssh_command(client, "ifconfig -a")
@@ -438,9 +413,9 @@ VALUES
 "{}",
 "{}",
 "{}")"""
-    update_db(clearing_query.format(str(client[0])))
+    db_handler.update_db(clearing_query.format(str(client[0])))
     for interface in interfaces:
-        update_db(query.format(client[0], interface[0], interface[1], interface[2], interface[3], interface[4], interface[5], interface[6], interface[6]))
+        db_handler.update_db(query.format(client[0], interface[0], interface[1], interface[2], interface[3], interface[4], interface[5], interface[6], interface[6]))
 
 #Check results against ML models
 def ml_check(results, sub_results, pfsense_instance, filename):
@@ -450,7 +425,7 @@ def ml_check(results, sub_results, pfsense_instance, filename):
         new_result = row_sanitize(item, new_result)
     new_result = np.array([new_result])
     hostname_query = "SELECT hostname FROM pfsense_instances WHERE id = {}"
-    hostname = query_db(hostname_query.format(pfsense_instance))[0][0]
+    hostname = db_handler.query_db(hostname_query.format(pfsense_instance))[0][0]
     daily_model_location = os.path.join(dir + "/" + hostname)
     model = pickle.load(open(daily_model_location + "/" + filename + ".pickle", 'rb'))
     prediction = model.predict(new_result)[0]
@@ -551,9 +526,9 @@ def open_vpn_handle(log, pfsense_instance):
         timestamp = raw_time.strftime('%Y-%m-%d %H:%M:%S')
         if(row[0] == "1"):
             vpn_user = vpn_user_process(row[3])
-            check_count = query_db(check_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))[0][0]
+            check_count = db_handler.query_db(check_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))[0][0]
             if(check_count == 0):
-                update_db(access_insert_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))
+                db_handler.update_db(access_insert_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))
                 logging.warning("OpenVPN log-on added")
     except:
         logging.warning("OPENVPN PARSING ERROR")
@@ -597,7 +572,7 @@ def handle(log, pfsense_instance, whitelist):
         sub_results = iterate_nulls(sub_results, 2, 99)
         time = datetime.datetime.strptime(results[1], "%Y-%m-%dT%H:%M:%S.%f%z")
         date_time = time.strftime("%Y-%m-%d %H:%M:%S")
-        existing = query_db(existing_query.format(results[0], date_time, results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22]))[0][0]
+        existing = db_handler.query_db(existing_query.format(results[0], date_time, results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22]))[0][0]
         if(existing == 0):
             target = [sub_results[18], sub_results[20]]
             if((target in whitelist) == True):
@@ -611,14 +586,14 @@ def handle(log, pfsense_instance, whitelist):
                 combined_ml_result = "-1"
             else:
                 combined_ml_result = "1"
-            update_db(log_insert_query.format(results[0], date_time, results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22], daily_ml_result, weekly_ml_result, combined_ml_result))
+            db_handler.update_db(log_insert_query.format(results[0], date_time, results[2], results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[9], sub_results[10], sub_results[11], sub_results[12], sub_results[13], sub_results[14], sub_results[15], sub_results[16], sub_results[17], sub_results[18], sub_results[19], sub_results[20], sub_results[21], sub_results[22], daily_ml_result, weekly_ml_result, combined_ml_result))
             if(message == None):
                 message = "parsed"
         else:
             message = "existing"
     except:
         query = """INSERT INTO pfsense_log_bucket (log) VALUES ("{}")"""
-        update_db(query.format(log))
+        db_handler.update_db(query.format(log))
         message = "bucket"
     return(message)
 
@@ -669,7 +644,7 @@ def process_ipsec_connections(client):
     client_id = str(client[0])
     processed_connections = []
     clear_current_connections_query = """DELETE FROM pfsense_ipsec_connections WHERE pfsense_instance = {}"""
-    update_db(clear_current_connections_query.format(client_id))
+    db_handler.update_db(clear_current_connections_query.format(client_id))
     connection_insert_query = """INSERT IGNORE INTO pfsense_ipsec_connections (pfsense_instance, local_connection, remote_connection, local_ranges, remote_ranges) VALUES ({}, "{}", "{}", "{}", "{}")"""
     connection_check_query = '''SELECT COUNT(*) FROM pfsense_ipsec_connections WHERE pfsense_instance = {} AND local_connection = "{}" AND remote_connection = "{}" AND local_ranges = "{}" AND remote_ranges = "{}"'''
     for row in connections:
@@ -697,9 +672,9 @@ def process_ipsec_connections(client):
                     remote_ranges = remote_ranges.strip().split("|/0")
                     local_ranges = remove_empty_entries(local_ranges)
                     remote_ranges = remove_empty_entries(remote_ranges)
-                check = query_db(connection_check_query.format(client_id, local, remote, local_ranges, remote_ranges))[0][0]
+                check = db_handler.query_db(connection_check_query.format(client_id, local, remote, local_ranges, remote_ranges))[0][0]
                 if(check == 0):
-                    update_db(connection_insert_query.format(client_id, local, remote, local_ranges, remote_ranges))
+                    db_handler.update_db(connection_insert_query.format(client_id, local, remote, local_ranges, remote_ranges))
                     processed_connections = processed_connections + [[local, remote, local_ranges, remote_ranges]]
                 else:
                     pass
