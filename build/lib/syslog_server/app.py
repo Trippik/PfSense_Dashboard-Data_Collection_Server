@@ -574,5 +574,3 @@ def main():
             except:
                 logging.warning("SSH POLL ERROR")
         time.sleep(int(os.environ["SYSLOG_POLL_INTERVAL"]))
-
-main()

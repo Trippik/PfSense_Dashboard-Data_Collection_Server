@@ -8,9 +8,11 @@ RUN apt-get update -y && \
 
 COPY ./requirements.txt /requirements.txt
 
+COPY ./setup.py /setup.py
+
 WORKDIR /
 
-RUN pip3 install -r requirements.txt
+RUN python3 setup.py install
 
 COPY . /
 
