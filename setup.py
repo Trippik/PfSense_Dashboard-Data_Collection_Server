@@ -8,5 +8,5 @@ setup(
     version="1.0.1",
     author="Cameron Trippick",
     install_requires=requirements,
-    packages=find_packages(),
+    packages=['syslog_server', 'syslog_server.lib'],
 )

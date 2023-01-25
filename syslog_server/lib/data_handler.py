@@ -1,4 +1,4 @@
-import lib.db_handler
+from syslog_server.lib import db_handler
 
 def row_sanitize(value, new_row):
     if(value == None):
@@ -124,3 +124,35 @@ def return_clients():
         client = [row[0], row[1], row[4], row[2], row[3], row[5]]
         clients = clients + [client,]
     return(clients)
+
+def remove_empty_entries(tup):
+    new_tup = []
+    for item in tup:
+        if(item != ''):
+            new_tup = new_tup + [item]
+    return(new_tup)
+
+def ipsec_range_secondary_subprocess(range):
+    new_range = []
+    for item in range:
+        if(item == ', dpdaction=hold' or ''):
+            pass
+        else:
+            new_entry = item.split("|/0")[0]
+            new_range = new_range + [new_entry]
+    return(new_range)
+
+def ipsec_range_subprocess(local_ranges, remote_ranges):
+    local_ranges = local_ranges.split("|/0 TUNNEL")
+    remote_ranges = remote_ranges.split("|/0 TUNNEL")
+    local_ranges = ipsec_range_secondary_subprocess(local_ranges)
+    remote_ranges = ipsec_range_secondary_subprocess(remote_ranges)
+    return([local_ranges, remote_ranges])
+
+def interface_sanitize(interfaces):
+    new_interfaces = []
+    for interface in interfaces:
+        if(len(interface) == 9):
+            new_interfaces = new_interfaces + [interface]
+    return(new_interfaces)
+

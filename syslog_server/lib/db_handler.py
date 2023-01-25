@@ -1,4 +1,12 @@
 import mysql.connector
+import os
+
+#SET DB PARAMETERS
+db_host = os.environ["DB_IP"]
+db_user = os.environ["DB_USER"]
+db_password = os.environ["DB_PASS"]
+db_schema = os.environ["DB_SCHEMA"]
+db_port = os.environ["DB_PORT"]
 
 #READ FROM DB
 def query_db(query):

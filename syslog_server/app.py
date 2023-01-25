@@ -12,17 +12,10 @@ import pickle
 from sklearn.ensemble import IsolationForest
 import io
 
-from lib import db_handler, data_handler
+from syslog_server.lib import db_handler, data_handler, client_handler
 
 #ADD TO LOG
 logging.warning("Program Started")
-
-#SET DB PARAMETERS
-db_host = os.environ["DB_IP"]
-db_user = os.environ["DB_USER"]
-db_password = os.environ["DB_PASS"]
-db_schema = os.environ["DB_SCHEMA"]
-db_port = os.environ["DB_PORT"]
 
 #SET STORAGE DIRECTORY
 dir = "/var/models"
@@ -30,128 +23,6 @@ dir = "/var/models"
 #----------------------------------------------------
 #UNDERLYING FUNCTIONS
 #---------------------------------------------------- 
-def run_ssh_command(client, command):
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        if(client[5] == None):
-            ssh.connect(client[1], client[2], username=client[3], password=client[4])
-        else:
-            pkey = paramiko.RSAKey.from_private_key(io.StringIO(client[5]))
-            ssh.connect(client[1], client[2], username=client[3], password=client[4], pkey=pkey)
-        ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(command, timeout=5)
-        lines = ssh_stdout.readlines()
-        ssh.close()
-        return(lines)
-
-def process_firewall_rules(client, lines):
-    new_rules = 0
-    existing_rules = 0
-    for line in lines:
-        if(line[0] == "@"):
-            split = line.split("@", 1)[1].split("(", 1)
-            rule_number = split[0]
-            description = split[1].split(")", 1)[1].lstrip()
-            query_2 = """INSERT INTO pfsense_firewall_rules (pfsense_instance, record_time, rule_number, rule_description) VALUES ({}, '{}', {}, '{}')"""
-            query_3 = """SELECT COUNT(*) FROM pfsense_firewall_rules WHERE pfsense_instance = {} AND rule_number = {} AND rule_description = '{}'"""
-            now = datetime.datetime.now()
-            timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-            query_3 = query_3.format(client[0], rule_number, description)
-            results = db_handler.query_db(query_3)
-            if(int(results[0][0]) == 0):
-                query_2 = query_2.format(client[0], timestamp, rule_number, description)
-                new_rules = new_rules + 1
-                db_handler.update_db(query_2)
-            elif(int(results[0][0]) > 0):
-                existing_rules = existing_rules + 1
-    print("Instance id: " + str(client[0]))
-    print(str(new_rules) + " New rules added")
-    print(str(existing_rules) + " Existing rules skipped")
-
-def check_firewall_rules(client):
-    lines = run_ssh_command(client, "pfctl -vvsr")
-    process_firewall_rules(client, lines)
-
-def check_os_version(client):
-    alter_query = "UPDATE pfsense_instances SET freebsd_version = {}, pfsense_release = {} WHERE id = {}"
-    lines = run_ssh_command(client, "uname -a")
-    lines = lines[0].split(" ")
-    freebsd_version = lines[2]
-    pfsense_release = lines[5]
-    freebsd_version = str(data_handler.single_dimension_index_read(freebsd_version, "freebsd_version", "freebsd_version"))
-    pfsense_release = str(data_handler.single_dimension_index_read(pfsense_release, "pfsense_release", "pfsense_release"))
-    db_handler.update_db(alter_query.format(freebsd_version, pfsense_release, client[0]))
-    print("FreeBSD Version: " + freebsd_version)
-    print("PfSense Release: " + pfsense_release)
-
-def check_instance_users(client):
-    lines = run_ssh_command(client, "logins")
-    count_broad = """SELECT COUNT(*) FROM pfsense_instance_users WHERE user_name = "{}" AND pfsense_instance = {}"""
-    count_specific = """SELECT COUNT(*) FROM pfsense_instance_users WHERE user_name = "{}" AND user_group = "{}" AND user_description = "{}" AND pfsense_instance = {}"""
-    record_insert = """INSERT INTO pfsense_instance_users (user_name, user_group, user_description, pfsense_instance) VALUES ("{}", "{}", "{}", {})"""
-    id_query = """SELECT id FROM pfsense_instance_users WHERE user_name = "{}" AND pfsense_instance = {}"""
-    record_update = """UPDATE pfsense_instance_users SET user_group = "{}", user_description = "{}" WHERE id = {}"""
-    added = 0
-    updated = 0
-    skipped = 0
-    for line in lines:
-        raw_result = line.split()
-        count = 0 
-        result = []
-        descrip = ""
-        for item in raw_result:
-            if(count < 4):
-                result = result + [item]
-            else:
-                descrip = descrip + " " + str(item)
-            count = count + 1
-        result = result + [descrip]
-        broad_count = db_handler.query_db(count_broad.format(result[0], str(client[0])))[0][0]
-        if(broad_count == 0):
-            db_handler.update_db(record_insert.format(result[0], result[2], result[4], str(client[0])))
-            added = added + 1
-        elif(broad_count > 0):
-            specific_count = db_handler.query_db(count_specific.format(result[0], result[2], result[4], str(client[0])))[0][0]
-            if(specific_count == 0):
-                id = db_handler.query_db(id_query.format(result[0], str(client[0])))[0][0]
-                db_handler.update_db(record_update.format(result[2], result[4], str(id)))
-                updated = updated + 1
-            else:
-                skipped = skipped + 1
-    print("Instance Users Added: " + str(added))
-    print("Instance Users Updated: " + str(updated))
-    print("Instance Users Skipped: " + str(skipped))
-
-def remove_empty_entries(tup):
-    new_tup = []
-    for item in tup:
-        if(item != ''):
-            new_tup = new_tup + [item]
-    return(new_tup)
-
-def ipsec_range_secondary_subprocess(range):
-    new_range = []
-    for item in range:
-        if(item == ', dpdaction=hold' or ''):
-            pass
-        else:
-            new_entry = item.split("|/0")[0]
-            new_range = new_range + [new_entry]
-    return(new_range)
-
-def ipsec_range_subprocess(local_ranges, remote_ranges):
-    local_ranges = local_ranges.split("|/0 TUNNEL")
-    remote_ranges = remote_ranges.split("|/0 TUNNEL")
-    local_ranges = ipsec_range_secondary_subprocess(local_ranges)
-    remote_ranges = ipsec_range_secondary_subprocess(remote_ranges)
-    return([local_ranges, remote_ranges])
-
-def interface_sanitize(interfaces):
-    new_interfaces = []
-    for interface in interfaces:
-        if(len(interface) == 9):
-            new_interfaces = new_interfaces + [interface]
-    return(new_interfaces)
-
 def return_whitelist(client):
     client_id = client[0]
     query = """SELECT ip, destination_port FROM whitelist WHERE pfsense_instance = {}"""
@@ -182,15 +53,15 @@ def standard_ssh_checks():
         except:
             logging.warning("Error Percent Failed")
         try:
-            check_firewall_rules(client) 
+            client_handler.check_firewall_rules(client) 
         except:
             logging.warning("Firewall Rules Check Failed")
         try:
-            check_os_version(client)
+            client_handler.check_os_version(client)
         except:
             logging.warning("OS Version Check Failed")
         try:
-            check_instance_users(client)
+            client_handler.check_instance_users(client)
         except:
             logging.warning("User Check Failed")
         try:
@@ -225,7 +96,7 @@ def error_percent(client):
     db_handler.update_db(add_entry.format(str(client[0]), daily_error_percent, weekly_error_percent, joint_error_percent))
 
 def interface_check(client):
-    raw_results = run_ssh_command(client, "ifconfig -a")
+    raw_results = client_handler.run_ssh_command(client, "ifconfig -a")
     interfaces = []
     new_interface = []
     count = 0
@@ -261,7 +132,7 @@ def interface_check(client):
                 pass
         if(sys_count == max_count):
             interfaces = interfaces + [new_interface]
-    interfaces = interface_sanitize(interfaces)
+    interfaces = data_handler.interface_sanitize(interfaces)
     return(interfaces)
 
 def interface_process(client):
@@ -325,7 +196,7 @@ def collect_filter_logs():
         logging.warning("Log Collection")
         logging.warning("PfSense Instance: " + client[1])
         pfsense_instance = client[0]
-        lines = run_ssh_command(client, "tail -10 /var/log/filter.log")
+        lines = client_handler.run_ssh_command(client, "tail -10 /var/log/filter.log")
         logging.warning("Raw Logs Collected")
         for line in lines:
             result = handle(line, pfsense_instance, whitelist)
@@ -347,7 +218,7 @@ def collect_OpenVPN_logs():
     clients = data_handler.return_clients()
     for client in clients:
         pfsense_instance = client[0]
-        lines = run_ssh_command(client, "tail /var/log/openvpn.log")
+        lines = client_handler.run_ssh_command(client, "tail /var/log/openvpn.log")
         for line in lines:
             open_vpn_handle(line, pfsense_instance)
 
@@ -472,7 +343,7 @@ def handle(log, pfsense_instance, whitelist):
     return(message)
 
 def check_ipsec(client):
-    results = run_ssh_command(client, "ipsec statusall")
+    results = client_handler.run_ssh_command(client, "ipsec statusall")
     listening_ip_addresses = []
     connections = []
     shunted_connections = []
@@ -544,8 +415,8 @@ def process_ipsec_connections(client):
                     remote_ranges = remote_ranges.split("|/0 TUNNEL")[0]
                     local_ranges = local_ranges.strip().split("|/0")
                     remote_ranges = remote_ranges.strip().split("|/0")
-                    local_ranges = remove_empty_entries(local_ranges)
-                    remote_ranges = remove_empty_entries(remote_ranges)
+                    local_ranges = data_handler.remove_empty_entries(local_ranges)
+                    remote_ranges = data_handler.remove_empty_entries(remote_ranges)
                 check = db_handler.query_db(connection_check_query.format(client_id, local, remote, local_ranges, remote_ranges))[0][0]
                 if(check == 0):
                     db_handler.update_db(connection_insert_query.format(client_id, local, remote, local_ranges, remote_ranges))
