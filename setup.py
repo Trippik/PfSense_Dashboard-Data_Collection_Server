@@ -9,4 +9,9 @@ setup(
     author="Cameron Trippick",
     install_requires=requirements,
     packages=['syslog_server', 'syslog_server.lib'],
+    entry_points={
+        'console_scripts': [
+            'PfSense_Dashboard-Data_Collection_Server = syslog_server.app:main',
+        ]
+    }
 )

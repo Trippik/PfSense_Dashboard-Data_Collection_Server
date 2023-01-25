@@ -10,12 +10,10 @@ COPY ./requirements.txt /requirements.txt
 
 COPY ./setup.py /setup.py
 
+COPY . /
+
 WORKDIR /
 
 RUN python3 setup.py install
 
-COPY . /
-
-ENTRYPOINT [ "python3" ]
-
-CMD [ "syslog_server/app.py" ]
+CMD [ "PfSense_Dashboard-Data_Collection_Server" ]
