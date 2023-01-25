@@ -1,4 +1,4 @@
 mysql-connector-python
 paramiko
 numpy
-sklearn
+scikit-learn
