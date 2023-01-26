@@ -10,7 +10,7 @@ DB_PORT = Port that DB is accessible on
 SYSLOG_POLL_INTERVAL = Interval in seconds at which to poll client instances for new syslog data  
 SSH_POLL_INTERVAL = Interval in mins at which to poll client instances for SSH derived info  
   
-*NB - The SYSLOG_POLL_INTERVAL must always be smaller than SSH_POLL_INTERVAL due to the method by which their functions are called, both of thhses variables must be integers*
+*NB - The SYSLOG_POLL_INTERVAL must always be smaller than SSH_POLL_INTERVAL due to the method by which their functions are called, both of these variables must be integers*
 
 ## Container Volumes
 The container will need a volume attached to it that is shared with the Data Processing container for the dashboard (https://github.com/Trippik/PfSense_Dashboard-Data_Processing_Server) mapped to /var/models to share ML models between the two containers.
@@ -36,3 +36,6 @@ Within the System Log Settings (Status > System Logs > Settings) set the logging
   - Log packets blocked by 'Block Private Networks' rules
   - Web Server Log
   - Log errors from the web server process
+
+### Installation Notes
+Although the system is intended to be deployed as a Docker Container, the software repo is within itself a standard Python Package, and as such can be installed using the setup.py file and run by using the "PfSense_Dashboard-Data_Collection_Server" command from the command line of your host server (assuming the correct ENV variables are set)
