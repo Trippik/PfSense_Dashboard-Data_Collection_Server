@@ -2,16 +2,16 @@
 #INITIALISATION
 #----------------------------------------------------
 #IMPORT LIBRARIES
+#Third party external libraries
+import numpy as np
+from sklearn.ensemble import IsolationForest
+#Internal libraries
 import logging
 import os
 import datetime
-import paramiko
 import time
-import numpy as np
 import pickle
-from sklearn.ensemble import IsolationForest
-import io
-
+#Custom package libraries
 from syslog_server.lib import db_handler, data_handler, client_handler
 
 #ADD TO LOG
@@ -446,4 +446,5 @@ def main():
                 logging.warning("SSH POLL ERROR")
         time.sleep(int(os.environ["SYSLOG_POLL_INTERVAL"]))
 
-main()
+if __name__ == '__main__':
+    main()
