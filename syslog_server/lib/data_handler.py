@@ -2,7 +2,7 @@ import logging
 import datetime
 from syslog_server.lib import db_handler, client_handler
 
-def row_sanitize(value, new_row):
+def row_sanitize(value, new_row:list) -> list:
     if(value == None):
         value = 0
     elif(value == "NaN"):
@@ -14,7 +14,7 @@ def row_sanitize(value, new_row):
     return(new_row)
 
 #FIND A SUBSTRING WITHIN A STRING
-def element_find(start_char_set, end_char_set, data):
+def element_find(start_char_set:str, end_char_set:str, data:str) -> list:
     start = data.find(start_char_set) + len(start_char_set)
     end = data.find(end_char_set)
     substring = data[start:end]
@@ -24,7 +24,7 @@ def element_find(start_char_set, end_char_set, data):
     return(substring, sliced_string)
 
 #SPLIT A STRING BASED ON NUMBER OF CHARACTERS
-def element_split(no_split, s):
+def element_split(no_split:int, s:str) -> list:
     first_half = s[:no_split]
     second_half = s[no_split:]
     first_half = first_half.strip()
@@ -32,7 +32,7 @@ def element_split(no_split, s):
     return(first_half, second_half)
 
 #REPLACE BLANKS IN TUPLE WITH "NULL"
-def iterate_nulls(tup, mode, count):
+def iterate_nulls(tup:list, mode:int, count:int) -> list:
     new_tup = []
     if(mode == 1):
         while(count > 0):
@@ -50,6 +50,9 @@ def iterate_nulls(tup, mode, count):
                 new_tup = new_tup + [item]
     return(new_tup)
 
+# --------------------------------
+# MOVE THESE INTO DB HANDLER
+# --------------------------------
 def double_dimension_index_add(results, table, var_names):
     query = """INSERT INTO {} ({}, {}) VALUES ('{}', {})"""
     db_handler.update_db(query.format(table, var_names[0], var_names[1], results[0], results[1]))
@@ -77,6 +80,8 @@ def single_dimension_index_read(result, table, var_name):
     else:
         id = query_result[0][0]
     return(id)
+
+# --------------------------------
 
 def results_process(results_tup, checks_tup, instance):
     count = 0
