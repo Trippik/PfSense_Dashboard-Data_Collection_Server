@@ -93,3 +93,12 @@ def check_instance_users(client):
     print("Instance Users Added: " + str(added))
     print("Instance Users Updated: " + str(updated))
     print("Instance Users Skipped: " + str(skipped))
+
+def return_whitelist(client):
+    client_id = client[0]
+    query = """SELECT ip, destination_port FROM whitelist WHERE pfsense_instance = {}"""
+    whitelist_raw = db_handler.query_db(query.format(str(client_id)))
+    whitelist = []
+    for row in whitelist_raw:
+        whitelist = whitelist + [[row[0], row[1]]]
+    return(whitelist)
