@@ -1,4 +1,6 @@
-from syslog_server.lib import db_handler
+import logging
+import datetime
+from syslog_server.lib import db_handler, client_handler
 
 def row_sanitize(value, new_row):
     if(value == None):
@@ -156,3 +158,74 @@ def interface_sanitize(interfaces):
             new_interfaces = new_interfaces + [interface]
     return(new_interfaces)
 
+def percent_process(rate, total):
+    dec = rate / total
+    percent = int(dec * 100)
+    percent = str(percent) + "%"
+    return(percent)
+
+#PARSE PFSENSE 2.5.x LOG DATA
+def log_process_25x(data):
+    result = element_find("<", ">1 ", data)
+    type_code = result[0]
+    result_2 = result[1].split()
+    timestamp = result_2[0]
+    hostname = None
+    log_type = result_2[2]
+    rset = result_2[6]  
+    rset = rset.split(",")
+    final_result = (type_code, timestamp, hostname, log_type, rset)
+    return(final_result)
+
+#PARSE PFSENSE 2.4.x and 21.05 PFSENSE PLUS LOG DATA
+def log_process_24x(data):
+    split_1 = data.split(" ", 3)
+    timestamp = split_1[0] + " " + split_1[1] + " " + split_1[2]
+    rest_1 = split_1[3]
+    raw_element_1 = rest_1.split(" ", 1)[1]
+    log_type = raw_element_1.split("[")[0]
+    rset = raw_element_1.split("]:", 1)[1].strip(" ")
+    rset = rset.split(",")
+    final_result = ("NULL", timestamp, log_type, rset)
+    return(final_result)
+
+#Collect OpenVPN logs from all clients
+def collect_OpenVPN_logs():
+    clients = return_clients()
+    for client in clients:
+        pfsense_instance = client[0]
+        lines = client_handler.run_ssh_command(client, "tail /var/log/openvpn.log")
+        for line in lines:
+            open_vpn_handle(line, pfsense_instance)
+
+#PARSE PFSENSE 2.5.x OPENVPN LOG DATA
+def open_vpn_process_25x(data):
+    result = element_find("<", ">1 ", data)
+    type_code = result[0]
+    result_2 = result[1].split()
+    timestamp = result_2[0]
+    hostname = None
+    log_type = result_2[2]
+    if(type_code == "37"):
+        user_name = result_2[7]
+        final_result = ("1", type_code, timestamp, user_name)
+    else:
+        final_result = ("2", type_code, timestamp, hostname, data)
+    return(final_result)
+
+
+def open_vpn_handle(log, pfsense_instance):
+    try:
+        access_insert_query = """INSERT INTO `open_vpn_access_log` (`type_code`, `record_time`, `vpn_user`, `pfsense_instance`) VALUES ({}, "{}", {}, {});"""
+        check_query = """SELECT COUNT(*) FROM open_vpn_access_log WHERE type_code = {} AND record_time = "{}" AND vpn_user = {} AND pfsense_instance = {}"""
+        row = open_vpn_process_25x(log)
+        raw_time = datetime.datetime.strptime(row[2], '%Y-%m-%dT%H:%M:%S.%f%z')
+        timestamp = raw_time.strftime('%Y-%m-%d %H:%M:%S')
+        if(row[0] == "1"):
+            vpn_user = vpn_user_process(row[3])
+            check_count = db_handler.query_db(check_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))[0][0]
+            if(check_count == 0):
+                db_handler.update_db(access_insert_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))
+                logging.warning("OpenVPN log-on added")
+    except:
+        logging.warning("OPENVPN PARSING ERROR")

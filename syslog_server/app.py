@@ -12,31 +12,13 @@ import datetime
 import time
 import pickle
 #Custom package libraries
-from syslog_server.lib import db_handler, data_handler, client_handler
+from syslog_server.lib import db_handler, data_handler, client_handler, ml_handler
 
 #ADD TO LOG
 logging.warning("Program Started")
 
 #SET STORAGE DIRECTORY
 dir = "/var/models"
-
-#----------------------------------------------------
-#UNDERLYING FUNCTIONS
-#---------------------------------------------------- 
-def return_whitelist(client):
-    client_id = client[0]
-    query = """SELECT ip, destination_port FROM whitelist WHERE pfsense_instance = {}"""
-    whitelist_raw = db_handler.query_db(query.format(str(client_id)))
-    whitelist = []
-    for row in whitelist_raw:
-        whitelist = whitelist + [[row[0], row[1]]]
-    return(whitelist)
-
-def percent_process(rate, total):
-    dec = rate / total
-    percent = int(dec * 100)
-    percent = str(percent) + "%"
-    return(percent)
 
 #----------------------------------------------------
 #PRIMARY FUNCTIONS
@@ -89,9 +71,9 @@ def error_percent(client):
     daily_error_rate = int(db_handler.query_db(count_days_errors.format(client[0], last_time, today, "-1"))[0][0])
     weekly_error_rate = int(db_handler.query_db(count_week_errors.format(client[0], last_time, today, "-1"))[0][0])
     joint_error_rate = int(db_handler.query_db(count_both_errors.format(client[0], last_time, today, "-1", "-1"))[0][0])
-    daily_error_percent = percent_process(daily_error_rate, log_count)
-    weekly_error_percent = percent_process(weekly_error_rate, log_count)
-    joint_error_percent = percent_process(joint_error_rate, log_count)
+    daily_error_percent = data_handler.percent_process(daily_error_rate, log_count)
+    weekly_error_percent = data_handler.percent_process(weekly_error_rate, log_count)
+    joint_error_percent = data_handler.percent_process(joint_error_rate, log_count)
     db_handler.update_db(delete_entries.format(str(client[0])))
     db_handler.update_db(add_entry.format(str(client[0]), daily_error_percent, weekly_error_percent, joint_error_percent))
 
@@ -162,32 +144,11 @@ VALUES
     for interface in interfaces:
         db_handler.update_db(query.format(client[0], interface[0], interface[1], interface[2], interface[3], interface[4], interface[5], interface[6], interface[6]))
 
-#Check results against ML models
-def ml_check(results, sub_results, pfsense_instance, filename):
-    result = [results[0], pfsense_instance, results[3], sub_results[0], sub_results[1], sub_results[2], sub_results[3], sub_results[4], sub_results[5], sub_results[6], sub_results[7], sub_results[8], sub_results[14], sub_results[16], sub_results[18], sub_results[19], sub_results[21]]
-    new_result = []
-    for item in result:
-        new_result = data_handler.row_sanitize(item, new_result)
-    new_result = np.array([new_result])
-    hostname_query = "SELECT hostname FROM pfsense_instances WHERE id = {}"
-    hostname = db_handler.query_db(hostname_query.format(pfsense_instance))[0][0]
-    daily_model_location = os.path.join(dir + "/" + hostname)
-    model = pickle.load(open(daily_model_location + "/" + filename + ".pickle", 'rb'))
-    prediction = model.predict(new_result)[0]
-    return(prediction)
-
-def ml_process(results, sub_results, pfsense_instance, filename):
-        try:
-            ml_result = ml_check(results, sub_results, pfsense_instance, filename)
-        except:
-            ml_result = "'NULL'"
-        return(ml_result)
-
 #Collect filter logs from all clients
 def collect_filter_logs():
     clients = data_handler.return_clients()
     for client in clients:
-        whitelist = return_whitelist(client)
+        whitelist = client_handler.return_whitelist(client)
         parsed = 0
         bucket = 0
         existing = 0
@@ -213,71 +174,6 @@ def collect_filter_logs():
         logging.warning("Logs Whitelisted: " + str(whitelisted))
         logging.warning("Logs Added to Bucket: " + str(bucket))
 
-#Collect OpenVPN logs from all clients
-def collect_OpenVPN_logs():
-    clients = data_handler.return_clients()
-    for client in clients:
-        pfsense_instance = client[0]
-        lines = client_handler.run_ssh_command(client, "tail /var/log/openvpn.log")
-        for line in lines:
-            open_vpn_handle(line, pfsense_instance)
-
-#PARSE PFSENSE 2.5.x OPENVPN LOG DATA
-def open_vpn_process_25x(data):
-    result = data_handler.element_find("<", ">1 ", data)
-    type_code = result[0]
-    result_2 = result[1].split()
-    timestamp = result_2[0]
-    hostname = None
-    log_type = result_2[2]
-    if(type_code == "37"):
-        user_name = result_2[7]
-        final_result = ("1", type_code, timestamp, user_name)
-    else:
-        final_result = ("2", type_code, timestamp, hostname, data)
-    return(final_result)
-
-#PARSE PFSENSE 2.5.x LOG DATA
-def log_process_25x(data):
-    result = data_handler.element_find("<", ">1 ", data)
-    type_code = result[0]
-    result_2 = result[1].split()
-    timestamp = result_2[0]
-    hostname = None
-    log_type = result_2[2]
-    rset = result_2[6]  
-    rset = rset.split(",")
-    final_result = (type_code, timestamp, hostname, log_type, rset)
-    return(final_result)
-
-#PARSE PFSENSE 2.4.x and 21.05 PFSENSE PLUS LOG DATA
-def log_process_24x(data):
-    split_1 = data.split(" ", 3)
-    timestamp = split_1[0] + " " + split_1[1] + " " + split_1[2]
-    rest_1 = split_1[3]
-    raw_element_1 = rest_1.split(" ", 1)[1]
-    log_type = raw_element_1.split("[")[0]
-    rset = raw_element_1.split("]:", 1)[1].strip(" ")
-    rset = rset.split(",")
-    final_result = ("NULL", timestamp, log_type, rset)
-    return(final_result)
-
-def open_vpn_handle(log, pfsense_instance):
-    try:
-        access_insert_query = """INSERT INTO `open_vpn_access_log` (`type_code`, `record_time`, `vpn_user`, `pfsense_instance`) VALUES ({}, "{}", {}, {});"""
-        check_query = """SELECT COUNT(*) FROM open_vpn_access_log WHERE type_code = {} AND record_time = "{}" AND vpn_user = {} AND pfsense_instance = {}"""
-        row = open_vpn_process_25x(log)
-        raw_time = datetime.datetime.strptime(row[2], '%Y-%m-%dT%H:%M:%S.%f%z')
-        timestamp = raw_time.strftime('%Y-%m-%d %H:%M:%S')
-        if(row[0] == "1"):
-            vpn_user = data_handler.vpn_user_process(row[3])
-            check_count = db_handler.query_db(check_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))[0][0]
-            if(check_count == 0):
-                db_handler.update_db(access_insert_query.format(row[1], timestamp, vpn_user, str(pfsense_instance)))
-                logging.warning("OpenVPN log-on added")
-    except:
-        logging.warning("OPENVPN PARSING ERROR")
-
 def handle(log, pfsense_instance, whitelist):
     #Attempt to run data through available parsing functions
     existing_query = """SELECT COUNT(*) FROM `Dashboard_DB`.`pfsense_logs` WHERE `type_code`= {} AND `record_time`= '{}' AND `pfsense_instance`= {} AND `log_type`= {} AND `rule_number`= {} AND `sub_rule_number`= {} AND `anchor`= {} AND `tracker`= {} AND `real_interface`= {} AND `reason`= {} AND `act`= {} AND `direction`= {} AND `ip_version`= {} AND `tos_header`= {} AND `ecn_header`= {} AND `ttl`= {} AND `packet_id`= {} AND `packet_offset`= {} AND `flags`= {} AND `protocol_id`= {} AND `protocol`= {} AND `packet_length`= {} AND `source_ip`= {} AND `destination_ip`= {} AND `source_port`= {} AND `destination_port`= {} AND `data_length`= {}"""
@@ -286,14 +182,14 @@ def handle(log, pfsense_instance, whitelist):
         message = None
         #Attempt to parse as PfSense 2.5.x log
         try:
-            results = log_process_25x(log)
+            results = data_handler.log_process_25x(log)
             hostname = results[2]
             sub_results = results[4]
             results = [results[0], results[1], str(pfsense_instance), results[3]]
         #If Unable to parse as 2.5.x parse as PfSense 2.4.x log
         except:
             log = log.strip("\n")
-            results = log_process_24x(log)
+            results = data_handler.log_process_24x(log)
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             sub_results = results[3]
             results = [results[0], timestamp, str(pfsense_instance), results[2]]
@@ -325,8 +221,8 @@ def handle(log, pfsense_instance, whitelist):
                 daily_ml_result = 1
                 weekly_ml_result = 1
             else:
-                daily_ml_result = ml_process(results, sub_results, pfsense_instance, "yesterday")
-                weekly_ml_result = ml_process(results, sub_results, pfsense_instance, "last_week")
+                daily_ml_result = ml_handler.ml_process(results, sub_results, pfsense_instance, "yesterday")
+                weekly_ml_result = ml_handler.ml_process(results, sub_results, pfsense_instance, "last_week")
             if(daily_ml_result == -1 and weekly_ml_result == -1):
                 combined_ml_result = "-1"
             else:
@@ -435,7 +331,7 @@ def main():
         except:
             pass
         try:
-            collect_OpenVPN_logs()
+            data_handler.collect_OpenVPN_logs()
         except:
             pass
         if(int(datetime.datetime.now().strftime("%M")) % int(os.environ["SSH_POLL_INTERVAL"]) == 0 ):
