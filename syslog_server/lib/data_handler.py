@@ -53,7 +53,7 @@ def iterate_nulls(tup:list, mode:int, count:int) -> list:
 # --------------------------------
 # MOVE THESE INTO DB HANDLER
 # --------------------------------
-def double_dimension_index_add(results, table, var_names):
+def double_dimension_index_add(results:list[str], table:str, var_names:list[str]) -> str:
     query = """INSERT INTO {} ({}, {}) VALUES ('{}', {})"""
     db_handler.update_db(query.format(table, var_names[0], var_names[1], results[0], results[1]))
 
@@ -67,11 +67,11 @@ def double_dimension_index_read(results, table, var_names):
         id = query_result[0][0]
     return(id)  
 
-def single_dimension_index_add(result, table, var_name):
+def single_dimension_index_add(result:str, table:str, var_name:str) -> None:
     query = """INSERT INTO {} ({}) VALUES ('{}')"""
     db_handler.update_db(query.format(table, var_name, result))
 
-def single_dimension_index_read(result, table, var_name):
+def single_dimension_index_read(result:str, table:str, var_name:str) -> str:
     query = """SELECT id FROM {} WHERE {} = '{}'"""
     query_result = db_handler.query_db(query.format(table, var_name, result))
     if(len(query_result) == 0):
@@ -83,7 +83,7 @@ def single_dimension_index_read(result, table, var_name):
 
 # --------------------------------
 
-def results_process(results_tup, checks_tup, instance):
+def results_process(results_tup:list[str], checks_tup:list[str], instance:str) -> list[str]:
     count = 0
     checks_count = 0
     checks_max = len(checks_tup)
@@ -112,7 +112,7 @@ def results_process(results_tup, checks_tup, instance):
         count = count + 1
     return(final_tup)
     
-def vpn_user_process(vpn_user):
+def vpn_user_process(vpn_user:str) -> str:
     count_query = """SELECT COUNT(*) FROM vpn_user WHERE user_name = {}"""
     select_query = """SELECT id FROM vpn_user WHERE user_name = {}""" 
     count = db_handler.query_db(count_query.format(vpn_user))[0][0]
@@ -123,7 +123,7 @@ def vpn_user_process(vpn_user):
     id = id_raw[0][0]
     return(id)
     
-def return_clients():
+def return_clients() -> list[str]:
     query = "SELECT id, reachable_ip, instance_user, instance_password, ssh_port, private_key FROM pfsense_instances"
     results = db_handler.query_db(query)
     clients = []
@@ -132,14 +132,14 @@ def return_clients():
         clients = clients + [client,]
     return(clients)
 
-def remove_empty_entries(tup):
+def remove_empty_entries(tup:list) -> list:
     new_tup = []
     for item in tup:
         if(item != ''):
             new_tup = new_tup + [item]
     return(new_tup)
 
-def ipsec_range_secondary_subprocess(range):
+def ipsec_range_secondary_subprocess(range:str) -> str:
     new_range = []
     for item in range:
         if(item == ', dpdaction=hold' or ''):

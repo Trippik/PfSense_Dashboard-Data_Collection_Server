@@ -3,7 +3,7 @@ import paramiko
 import datetime
 import io
 
-def run_ssh_command(client, command):
+def run_ssh_command(client, command:str) -> list[str]:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         if(client[5] == None):
@@ -16,7 +16,7 @@ def run_ssh_command(client, command):
         ssh.close()
         return(lines)
 
-def process_firewall_rules(client, lines):
+def process_firewall_rules(client, lines:list[str]) -> None:
     new_rules = 0
     existing_rules = 0
     for line in lines:
@@ -40,11 +40,11 @@ def process_firewall_rules(client, lines):
     print(str(new_rules) + " New rules added")
     print(str(existing_rules) + " Existing rules skipped")
 
-def check_firewall_rules(client):
+def check_firewall_rules(client) -> None:
     lines = run_ssh_command(client, "pfctl -vvsr")
     process_firewall_rules(client, lines)
 
-def check_os_version(client):
+def check_os_version(client) -> None:
     alter_query = "UPDATE pfsense_instances SET freebsd_version = {}, pfsense_release = {} WHERE id = {}"
     lines = run_ssh_command(client, "uname -a")
     lines = lines[0].split(" ")
@@ -56,7 +56,7 @@ def check_os_version(client):
     print("FreeBSD Version: " + freebsd_version)
     print("PfSense Release: " + pfsense_release)
 
-def check_instance_users(client):
+def check_instance_users(client) -> None:
     lines = run_ssh_command(client, "logins")
     count_broad = """SELECT COUNT(*) FROM pfsense_instance_users WHERE user_name = "{}" AND pfsense_instance = {}"""
     count_specific = """SELECT COUNT(*) FROM pfsense_instance_users WHERE user_name = "{}" AND user_group = "{}" AND user_description = "{}" AND pfsense_instance = {}"""
@@ -94,7 +94,7 @@ def check_instance_users(client):
     print("Instance Users Updated: " + str(updated))
     print("Instance Users Skipped: " + str(skipped))
 
-def return_whitelist(client):
+def return_whitelist(client) -> list[str]:
     client_id = client[0]
     query = """SELECT ip, destination_port FROM whitelist WHERE pfsense_instance = {}"""
     whitelist_raw = db_handler.query_db(query.format(str(client_id)))
