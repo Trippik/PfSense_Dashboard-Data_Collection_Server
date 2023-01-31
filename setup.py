@@ -5,7 +5,7 @@ with open('requirements.txt') as f:
 
 setup(
     name="PfSense_Dashboard-Data_Collection_Server",
-    version="1.0.x",
+    version="1.0",
     author="Cameron Trippick",
     install_requires=requirements,
     packages=['syslog_server', 'syslog_server.lib'],
