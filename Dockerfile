@@ -31,3 +31,4 @@ ENV SYSLOG_POLL_INTERVAL = "Placeholder"
 ENV SSH_POLL_INTERVAL = "Placeholder"
 
 CMD [ "PfSense_Dashboard-Data_Collection_Server" ]
+
