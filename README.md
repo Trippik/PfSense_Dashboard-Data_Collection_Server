@@ -28,7 +28,7 @@ Finally you will need to enter the details of your client PfSense instance into 
   
 *NB - By default only the root/admin account has access to the required /var/log directory on PfSense client machines. If you do not wish to put the admin user into the system, you can use another user but you will have to ensure that read and execute permissions have been given to the alternate user you put into the system in order for it to function properly*
   
-### PfSense CE 2.5.x/PfSense Plus 21.05 - Syslog Setup
+### PfSense CE 2.5.x & 2.6.x/PfSense Plus 21.05 - Syslog Setup
 Within the System Log Settings (Status > System Logs > Settings) set the logging format to "SYSLOG RFC5424" and set the system to:  
   - Log packets matched from the default block rules 
   - Log packets matched from the default pass rules
