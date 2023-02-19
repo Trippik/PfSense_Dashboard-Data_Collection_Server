@@ -27,4 +27,4 @@ def update_db(query):
     with create_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(query)
-        cursor.commit()
+        conn.commit()
