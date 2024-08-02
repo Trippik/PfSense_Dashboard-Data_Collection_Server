@@ -322,9 +322,16 @@ def process_ipsec_connections(client):
             except:
                 pass
 
+def run_db_updates():
+    logging.warning("Running DDL updates")
+    ddl_files = os.listdir("/ddl")
+    for file in ddl_files:
+        db_handler.process_ddl_file(file_path="/ddl/" + file, file_name=file)
+
 #MAINLOOP
 def main():
     loop = True
+    run_db_updates()
     while(loop == True):
         try:
             collect_filter_logs()
