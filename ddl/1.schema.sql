@@ -46,6 +46,18 @@ CREATE TABLE IF NOT EXISTS `dashboard_user` (
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+
+--
+-- Dumping data for table `dashboard_user`
+--
+
+LOCK TABLES `dashboard_user` WRITE;
+/*!40000 ALTER TABLE `dashboard_user` DISABLE KEYS */;
+INSERT INTO `dashboard_user` VALUES (1,'admin','s9utasXT1yoRJ9ryUaJx9LGHRmQ5WGs7Yvl4fSwf494=');
+/*!40000 ALTER TABLE `dashboard_user` ENABLE KEYS */;
+UNLOCK TABLES;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
 --
 -- Table structure for table `db_versioning`
 --
