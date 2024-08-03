@@ -38,4 +38,6 @@ Within the System Log Settings (Status > System Logs > Settings) set the logging
   - Log errors from the web server process
 
 ### Installation Notes
-Although the system is intended to be deployed as a Docker Container, the software repo is within itself a standard Python Package, and as such can be installed using the setup.py file and run by using the "PfSense_Dashboard-Data_Collection_Server" command from the command line of your host server (assuming the correct ENV variables are set)
+Although the system is intended to be deployed as a Docker Container, the software repo is within itself a standard Python Package, and as such can be installed using the setup.py file and run by using the "PfSense_Dashboard-Data_Collection_Server" command from the command line of your host server (assuming the correct ENV variables are set).
+
+The data collection server also managed the initial setup and update of the underlying DB schema for the PfSense Dashboard Service
