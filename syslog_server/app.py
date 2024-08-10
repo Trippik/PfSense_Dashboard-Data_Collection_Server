@@ -10,7 +10,6 @@ import logging
 import os
 import datetime
 import time
-import pickle
 #Custom package libraries
 from syslog_server.lib import db_handler, data_handler, client_handler, ml_handler
 
@@ -32,28 +31,28 @@ def standard_ssh_checks():
         logging.warning("----------------------------------------")
         try:
             error_percent(client)
-        except:
-            logging.warning("Error Percent Failed")
+        except Exception:
+            logging.exception("Error Percent Failed")
         try:
             client_handler.check_firewall_rules(client) 
-        except:
-            logging.warning("Firewall Rules Check Failed")
+        except Exception:
+            logging.exception("Firewall Rules Check Failed")
         try:
             client_handler.check_os_version(client)
-        except:
-            logging.warning("OS Version Check Failed")
+        except Exception:
+            logging.exception("OS Version Check Failed")
         try:
             client_handler.check_instance_users(client)
-        except:
-            logging.warning("User Check Failed")
+        except Exception:
+            logging.exception("User Check Failed")
         try:
             process_ipsec_connections(client)
-        except:
-            logging.warning("IPSec Connections Check Failed")
+        except Exception:
+            logging.exception("IPSec Connections Check Failed")
         try:
             interface_process(client)
-        except:
-            logging.warning("Interface Check Failed")
+        except Exception:
+            logging.exception("Interface Check Failed")
 
 def error_percent(client):
     last_log_query = """SELECT record_time FROM pfsense_logs WHERE pfsense_instance = {} ORDER BY record_time DESC LIMIT 1"""
