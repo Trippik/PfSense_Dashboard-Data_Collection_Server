@@ -1,8 +1,11 @@
 import numpy as np
 import pickle
 import os
+import logging
 
 from syslog_server.lib import data_handler, db_handler
+
+directory = "/var/models"
 
 #Check results against ML models
 def ml_check(results, sub_results, pfsense_instance, filename):
@@ -13,7 +16,7 @@ def ml_check(results, sub_results, pfsense_instance, filename):
     new_result = np.array([new_result])
     hostname_query = "SELECT hostname FROM pfsense_instances WHERE id = {}"
     hostname = db_handler.query_db(hostname_query.format(pfsense_instance))[0][0]
-    daily_model_location = os.path.join(dir + "/" + hostname)
+    daily_model_location = os.path.join(directory + "/" + hostname)
     model = pickle.load(open(daily_model_location + "/" + filename + ".pickle", 'rb'))
     prediction = model.predict(new_result)[0]
     return(prediction)
@@ -21,6 +24,7 @@ def ml_check(results, sub_results, pfsense_instance, filename):
 def ml_process(results, sub_results, pfsense_instance, filename):
         try:
             ml_result = ml_check(results, sub_results, pfsense_instance, filename)
-        except:
+        except Exception:
+            logging.exception("Error when running ml_process")
             ml_result = "'NULL'"
         return(ml_result)
